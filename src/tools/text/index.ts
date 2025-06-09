@@ -1,0 +1,262 @@
+/**
+ * @fileoverview Text manipulation tools for InDesign MCP
+ * Batch 1: Core text operations - add, update, remove, get document text
+ */
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import type { TextPosition } from "../../types.js";
+
+/**
+ * Registers all text manipulation tools with the MCP server
+ */
+export async function registerTextTools(server: McpServer): Promise<void> {
+  // Register add_text tool
+  server.tool(
+    "add_text",
+    "Add text to an InDesign document",
+    {
+      text: {
+        type: "string",
+        description: "The text to add to the document"
+      },
+      position: {
+        type: "string",
+        description: "Position to add text (start, end, or after_selection)",
+        enum: ["start", "end", "after_selection"],
+        default: "end"
+      }
+    },
+    async (args) => {
+      const text = escapeExtendScriptString(args.text);
+      const position: TextPosition = args.position || "end";
+      
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found. Please make sure a document is active.");
+        }
+        
+        if (doc.stories.length === 0) {
+          throw new Error("Document has no text stories. Please add a text frame first.");
+        }
+        
+        var story = doc.stories[0];
+        var insertionPoint;
+        
+        if ("${position}" === "start") {
+          insertionPoint = story.insertionPoints[0];
+        } else if ("${position}" === "end") {
+          insertionPoint = story.insertionPoints[-1];
+        } else {
+          insertionPoint = story.insertionPoints[-1];
+        }
+        
+        insertionPoint.contents = "${text}";
+        "Text added successfully to " + doc.name;
+      `;
+      
+      const result = await executeExtendScript(script);
+      
+      if (result.success) {
+        return {
+          content: [{
+            type: "text",
+            text: `Successfully added text: '${args.text}'`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: "text", 
+            text: `Error adding text: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Register update_text tool
+  server.tool(
+    "update_text",
+    "Update existing text in an InDesign document",
+    {
+      find_text: {
+        type: "string",
+        description: "Text to find and replace"
+      },
+      replace_text: {
+        type: "string", 
+        description: "Text to replace with"
+      },
+      all_occurrences: {
+        type: "boolean",
+        description: "Replace all occurrences or just the first",
+        default: false
+      }
+    },
+    async (args) => {
+      const findText = escapeExtendScriptString(args.find_text);
+      const replaceText = escapeExtendScriptString(args.replace_text);
+      const allOccurrences = args.all_occurrences || false;
+      
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        app.findGrepPreferences = NothingEnum.nothing;
+        app.changeGrepPreferences = NothingEnum.nothing;
+        
+        app.findGrepPreferences.findWhat = "${findText}";
+        app.changeGrepPreferences.changeTo = "${replaceText}";
+        
+        var found = doc.changeGrep(${allOccurrences});
+        
+        app.findGrepPreferences = NothingEnum.nothing;
+        app.changeGrepPreferences = NothingEnum.nothing;
+        
+        "Replaced " + found.length + " occurrence(s) in " + doc.name;
+      `;
+      
+      const result = await executeExtendScript(script);
+      
+      if (result.success) {
+        return {
+          content: [{
+            type: "text",
+            text: `Successfully updated text: ${result.result}`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `Error updating text: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Register remove_text tool
+  server.tool(
+    "remove_text",
+    "Remove text from an InDesign document",
+    {
+      text: {
+        type: "string",
+        description: "Text to remove from the document"
+      },
+      all_occurrences: {
+        type: "boolean",
+        description: "Remove all occurrences or just the first",
+        default: false
+      }
+    },
+    async (args) => {
+      const text = escapeExtendScriptString(args.text);
+      const allOccurrences = args.all_occurrences || false;
+      
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        app.findGrepPreferences = NothingEnum.nothing;
+        app.changeGrepPreferences = NothingEnum.nothing;
+        
+        app.findGrepPreferences.findWhat = "${text}";
+        app.changeGrepPreferences.changeTo = "";
+        
+        var found = doc.changeGrep(${allOccurrences});
+        
+        app.findGrepPreferences = NothingEnum.nothing;
+        app.changeGrepPreferences = NothingEnum.nothing;
+        
+        "Removed " + found.length + " occurrence(s) from " + doc.name;
+      `;
+      
+      const result = await executeExtendScript(script);
+      
+      if (result.success) {
+        return {
+          content: [{
+            type: "text",
+            text: `Successfully removed text: ${result.result}`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `Error removing text: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Register get_document_text tool
+  server.tool(
+    "get_document_text",
+    "Get all text content from the active InDesign document",
+    {},
+    async (args) => {
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        if (doc.stories.length === 0) {
+          "Document " + doc.name + " has no text content.";
+        } else {
+          var content = [];
+          content.push("=== Content from " + doc.name + " ===");
+          content.push("");
+          content.push("Story 1 of " + doc.stories.length + ":");
+          content.push(doc.stories[0].contents.substring(0, 500) + "...");
+          
+          content.join("\\n");
+        }
+      `;
+      
+      const result = await executeExtendScript(script);
+      
+      if (result.success) {
+        return {
+          content: [{
+            type: "text",
+            text: `Document text content:\n${result.result}`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting document text: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
+}
