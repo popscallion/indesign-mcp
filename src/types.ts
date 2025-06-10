@@ -183,3 +183,39 @@ export interface PageDimensions {
   };
   orientation: "portrait" | "landscape";
 }
+
+/**
+ * Object transformation types
+ */
+export type TransformationType = "move" | "scale" | "rotate" | "skew";
+
+/**
+ * Alignment options for objects
+ */
+export type AlignmentType = "left" | "center" | "right" | "top" | "middle" | "bottom";
+
+/**
+ * Distribution options for objects  
+ */
+export type DistributionType = "horizontal" | "vertical";
+
+/**
+ * Transform values for different transformation types
+ */
+export interface TransformValues {
+  x?: number;
+  y?: number;
+  scaleX?: number;
+  scaleY?: number;
+  rotation?: number;
+  skewAngle?: number;
+}
+
+/**
+ * Object selection criteria
+ */
+export interface ObjectSelection {
+  type?: "all" | "text" | "image" | "shape";
+  layer?: string;
+  page?: number;
+}
