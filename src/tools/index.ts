@@ -10,6 +10,7 @@ import { registerLayoutTools } from "./layout/index.js";
 import { registerPageTools } from "./pages/index.js";
 import { registerSpecialTools } from "./special/index.js";
 import { registerUtilityTools } from "./utility/index.js";
+import { registerExportTools } from "./export/index.js";
 
 /**
  * Registers all InDesign tools with the MCP server
@@ -34,6 +35,9 @@ export async function registerAllInDesignTools(server: McpServer): Promise<void>
     
     // Batch 6: Advanced & Utility (7 tools)
     await registerUtilityTools(server);
+    
+    // Tier 1 Expansion: Document Export/Import (3 tools)
+    await registerExportTools(server);
     
     console.error("Successfully registered all InDesign tools");
   } catch (error) {
