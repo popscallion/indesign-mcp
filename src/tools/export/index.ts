@@ -310,4 +310,242 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       }
     }
   );
+
+  // Register place_file tool
+  server.tool(
+    "place_file",
+    "Place an external file (image, text, document) into the current InDesign document",
+    {
+      path: {
+        type: "string",
+        description: "Path to file to place"
+      },
+      x: {
+        type: "number",
+        description: "X position for placed content",
+        default: 72
+      },
+      y: {
+        type: "number",
+        description: "Y position for placed content", 
+        default: 72
+      },
+      width: {
+        type: "number",
+        description: "Width for placed content",
+        default: 200
+      },
+      height: {
+        type: "number",
+        description: "Height for placed content",
+        default: 200
+      },
+      link_file: {
+        type: "boolean",
+        description: "Link to file instead of embedding",
+        default: true
+      },
+      fit_content: {
+        type: "boolean",
+        description: "Automatically fit content to frame",
+        default: true
+      }
+    },
+    async (args) => {
+      const path = escapeExtendScriptString(args.path);
+      const x = args.x || 72;
+      const y = args.y || 72;
+      const width = args.width || 200;
+      const height = args.height || 200;
+      const linkFile = args.link_file !== false;
+      const fitContent = args.fit_content !== false;
+
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        try {
+          var placeFile = new File("${path}");
+          if (!placeFile.exists) {
+            throw new Error("File does not exist: ${path}");
+          }
+          
+          var page = doc.pages[0];
+          var bounds = [${y}, ${x}, ${y + height}, ${x + width}];
+          
+          // Create a frame for the content
+          var frame;
+          var fileExtension = placeFile.name.split('.').pop().toLowerCase();
+          
+          if (fileExtension === 'txt' || fileExtension === 'rtf' || fileExtension === 'doc' || fileExtension === 'docx') {
+            // Text file - create text frame
+            frame = page.textFrames.add({
+              geometricBounds: bounds
+            });
+          } else {
+            // Image or other graphic - create rectangle frame
+            frame = page.rectangles.add({
+              geometricBounds: bounds
+            });
+          }
+          
+          // Place the file
+          var placedItem = frame.place(placeFile, false);
+          
+          // Fit content if requested
+          if (${fitContent ? "true" : "false"}) {
+            if (frame.images && frame.images.length > 0) {
+              // For images, fit proportionally
+              frame.fit(FitOptions.PROPORTIONALLY);
+            }
+          }
+          
+          "Successfully placed " + placeFile.name + " at position [${x}, ${y}]";
+          
+        } catch (e) {
+          throw new Error("Place file failed: " + e.message);
+        }
+      `;
+
+      const result = await executeExtendScript(script);
+
+      if (result.success) {
+        return {
+          content: [{
+            type: "text",
+            text: `Place completed: ${result.result}`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `Place failed: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Register get_page_dimensions tool
+  server.tool(
+    "get_page_dimensions",
+    "Get dimensions and properties of pages in the document",
+    {
+      page_number: {
+        type: "number",
+        description: "Page number to get dimensions for (1-based), or 0 for all pages",
+        default: 1
+      }
+    },
+    async (args) => {
+      const pageNumber = args.page_number || 1;
+
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        try {
+          var result = [];
+          
+          if (${pageNumber} === 0) {
+            // Get all pages
+            for (var i = 0; i < doc.pages.length; i++) {
+              var page = doc.pages[i];
+              var bounds = page.bounds;
+              var marginPrefs = page.marginPreferences;
+              
+              var pageInfo = {
+                number: i + 1,
+                name: page.name,
+                width: bounds[3] - bounds[1],
+                height: bounds[2] - bounds[0],
+                bounds: [bounds[0], bounds[1], bounds[2], bounds[3]],
+                margins: {
+                  top: marginPrefs.top,
+                  left: marginPrefs.left,
+                  bottom: marginPrefs.bottom,
+                  right: marginPrefs.right
+                },
+                orientation: (bounds[3] - bounds[1]) > (bounds[2] - bounds[0]) ? "landscape" : "portrait"
+              };
+              result.push(pageInfo);
+            }
+            
+            JSON.stringify(result);
+            
+          } else {
+            // Get specific page
+            if (${pageNumber} > doc.pages.length || ${pageNumber} < 1) {
+              throw new Error("Page number " + ${pageNumber} + " is out of range. Document has " + doc.pages.length + " pages.");
+            }
+            
+            var page = doc.pages[${pageNumber} - 1];
+            var bounds = page.bounds;
+            var marginPrefs = page.marginPreferences;
+            
+            var pageInfo = {
+              number: ${pageNumber},
+              name: page.name,
+              width: bounds[3] - bounds[1],
+              height: bounds[2] - bounds[0],
+              bounds: [bounds[0], bounds[1], bounds[2], bounds[3]],
+              margins: {
+                top: marginPrefs.top,
+                left: marginPrefs.left,
+                bottom: marginPrefs.bottom,
+                right: marginPrefs.right
+              },
+              orientation: (bounds[3] - bounds[1]) > (bounds[2] - bounds[0]) ? "landscape" : "portrait"
+            };
+            
+            JSON.stringify(pageInfo);
+          }
+          
+        } catch (e) {
+          throw new Error("Get page dimensions failed: " + e.message);
+        }
+      `;
+
+      const result = await executeExtendScript(script);
+
+      if (result.success) {
+        try {
+          const pageData = JSON.parse(result.result || "{}");
+          return {
+            content: [{
+              type: "text",
+              text: `Page dimensions:\n${JSON.stringify(pageData, null, 2)}`
+            }]
+          };
+        } catch (parseError) {
+          return {
+            content: [{
+              type: "text",
+              text: `Page dimensions: ${result.result || "No result"}`
+            }]
+          };
+        }
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `Get page dimensions failed: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
 }
