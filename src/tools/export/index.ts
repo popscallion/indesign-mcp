@@ -14,10 +14,10 @@ import { z } from "zod";
 export async function registerExportTools(server: McpServer): Promise<void> {
   // Register export_document tool
   server.tool(
-    "export_document",
+    "test_export_document",
     {
       format: z.enum(["PDF", "EPUB", "HTML", "IDML", "JPEG", "PNG", "EPS"]).describe("Export format"),
-      filePath: z.string().describe("Export file path"),
+      filePath: z.string().describe("Export file path (must be a valid local file path, not temp/... paths)"),
       quality: z.enum(["high", "medium", "low"]).default("high").describe("Export quality setting"),
       pages: z.string().default("all").describe("Page range to export (e.g., 'all', '1-5', '3,7,9')"),
       spreads: z.boolean().default(false).describe("Export as spreads instead of individual pages")
@@ -44,70 +44,42 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         
         try {
           var exportFile = new File("${path}");
-          var exportFormat;
-          var exportPresets = [];
           
-          // Determine export format
-          switch ("${format}") {
-            case "PDF":
-              exportFormat = ExportFormat.pdfType;
-              exportPresets = doc.pdfExportPresets;
-              break;
-            case "EPUB":
-              exportFormat = ExportFormat.EPUB;
-              exportPresets = doc.epubExportPresets;
-              break;
-            case "HTML":
-              exportFormat = ExportFormat.HTML;
-              break;
-            case "IDML":
-              exportFormat = ExportFormat.IDML;
-              break;
-            case "JPEG":
-              exportFormat = ExportFormat.jpg;
-              exportPresets = doc.jpegExportPresets;
-              break;
-            case "PNG":
-              exportFormat = ExportFormat.PNG_FORMAT;
-              exportPresets = doc.pngExportPresets;
-              break;
-            case "EPS":
-              exportFormat = ExportFormat.epsType;
-              exportPresets = doc.epsExportPresets;
-              break;
-            default:
-              throw new Error("Unsupported export format: ${format}");
-          }
-          
-          // Set up export preferences based on quality
-          var preset = null;
-          if (exportPresets && exportPresets.length > 0) {
-            var qualityName = "${quality}";
-            for (var i = 0; i < exportPresets.length; i++) {
-              if (exportPresets[i].name.toLowerCase().indexOf(qualityName) !== -1) {
-                preset = exportPresets[i];
-                break;
-              }
-            }
-            if (!preset) {
-              preset = exportPresets[0]; // Use first available preset
-            }
-          }
-          
-          // Configure page range
-          if ("${pages}" !== "all") {
-            app.pdfExportPreferences.pageRange = "${pages}";
-          }
-          
-          // Configure spreads setting
+          // Set up export based on format
           if ("${format}" === "PDF") {
-            app.pdfExportPreferences.exportReaderSpreads = ${spreads ? "true" : "false"};
+            // Use PDF export preset
+            var preset = app.pdfExportPresets.item("[High Quality Print]");
+            if (!preset.isValid) {
+              preset = app.pdfExportPresets[0]; // Use first available preset
+            }
+            
+            // Set page range if specified
+            if ("${pages}" !== "all") {
+              preset.pageRange = "${pages}";
+            }
+            
+            // Export PDF
+            doc.exportFile(ExportFormat.PDF_TYPE, exportFile, false, preset);
+            "Successfully exported PDF to " + exportFile.fsName;
+            
+          } else if ("${format}" === "JPEG") {
+            // JPEG export
+            doc.exportFile(ExportFormat.JPG, exportFile, false);
+            "Successfully exported JPEG to " + exportFile.fsName;
+            
+          } else if ("${format}" === "PNG") {
+            // PNG export
+            doc.exportFile(ExportFormat.PNG_FORMAT, exportFile, false);
+            "Successfully exported PNG to " + exportFile.fsName;
+            
+          } else if ("${format}" === "EPS") {
+            // EPS export
+            doc.exportFile(ExportFormat.EPS_TYPE, exportFile, false);
+            "Successfully exported EPS to " + exportFile.fsName;
+            
+          } else {
+            throw new Error("Export format ${format} not yet implemented");
           }
-          
-          // Perform export
-          doc.exportFile(exportFormat, exportFile, false, preset);
-          
-          "Successfully exported document to " + exportFile.fsName + " in ${format} format";
           
         } catch (e) {
           throw new Error("Export failed: " + e.message);
@@ -198,7 +170,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   server.tool(
     "import_content",
     {
-      filePath: z.string().describe("Path to file to import"),
+      filePath: z.string().describe("Path to file to import (must be a valid local file path)"),
       link_file: z.boolean().default(true).describe("Link to file instead of embedding"),
       show_options: z.boolean().default(false).describe("Show import options dialog"),
       retain_format: z.boolean().default(true).describe("Retain formatting from source file")
@@ -277,7 +249,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   server.tool(
     "place_file",
     {
-      filePath: z.string().describe("Path to file to place"),
+      filePath: z.string().describe("Path to file to place (must be a valid local file path)"),
       x: z.number().default(72).describe("X position for placed content"),
       y: z.number().default(72).describe("Y position for placed content"),
       width: z.number().default(200).describe("Width for placed content"),
@@ -375,10 +347,10 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   server.tool(
     "get_page_dimensions",
     {
-      pageNumber: z.number().default(1).describe("Page number to get dimensions for (1-based), or 0 for all pages")
+      page_number: z.number().default(1).describe("Page number to get dimensions for (1-based), or 0 for all pages")
     },
     async (args) => {
-      const pageNumber = args.pageNumber || 1;
+      const pageNumber = args.page_number || 1;
 
       const script = `
         if (app.documents.length === 0) {

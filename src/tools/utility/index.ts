@@ -171,9 +171,9 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
   server.tool(
     "copy_textframe_properties",
     {
-      source_page: z.number().int().default(4).describe("Source page number (1-based)"),
-      target_pages: z.array(z.number().int()).default([6, 7]).describe("Target page numbers"),
-      source_frame_index: z.number().int().default(0).describe("Index of frame to copy (0-based)"),
+      source_page: z.number().int().default(4).describe("Source page number (1-based) with existing text frames to copy from"),
+      target_pages: z.array(z.number().int()).default([6, 7]).describe("Target page numbers where matching frames will be created"),
+      source_frame_index: z.number().int().default(0).describe("Index of existing frame to copy (0-based) - use get_textframe_info first to see available frames"),
       replace_existing: z.boolean().default(false).describe("Remove existing frames on target pages before creating new ones")
     },
     async (args) => {
@@ -591,8 +591,11 @@ async function handleCopyTextFrameProperties(args: any): Promise<{ content: Text
     }
     
     var sourcePage = doc.pages[${sourcePage} - 1];
+    if (sourcePage.textFrames.length === 0) {
+      throw new Error("No text frames found on page " + ${sourcePage} + " to copy properties from. Check other pages using get_textframe_info to find available frames.");
+    }
     if (sourcePage.textFrames.length <= ${sourceFrameIndex}) {
-      throw new Error("Source frame index " + ${sourceFrameIndex} + " does not exist on page " + ${sourcePage});
+      throw new Error("Source frame index " + ${sourceFrameIndex} + " does not exist on page " + ${sourcePage} + ". Page has " + sourcePage.textFrames.length + " frame(s). Use index 0 to " + (sourcePage.textFrames.length - 1) + ".");
     }
     
     var sourceFrame = sourcePage.textFrames[${sourceFrameIndex}];

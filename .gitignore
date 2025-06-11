@@ -66,3 +66,7 @@ temp/
 # InDesign temporary files
 *.jsx
 /tmp/indesign_script_*.jsx
+
+# Project documentation
+CLAUDE.md
+docs/

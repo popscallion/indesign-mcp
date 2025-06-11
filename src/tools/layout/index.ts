@@ -35,7 +35,7 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
       y: z.number().describe("Y position in points"),
       width: z.number().describe("Width in points"),
       height: z.number().describe("Height in points"),
-      page_index: z.number().default(0).describe("Page index (0-based)"),
+      page_number: z.number().default(1).describe("Page number (1-based)"),
       text_content: z.string().default("").describe("Initial text content")
     },
     async (args) => {
@@ -109,16 +109,16 @@ async function handleCreateTextFrame(args: any): Promise<{ content: TextContent[
   const y = args.y;
   const width = args.width;
   const height = args.height;
-  const pageIndex = args.page_index || 0;
+  const pageNumber = args.page_number || 1;
   const textContent = args.text_content ? escapeExtendScriptString(args.text_content) : "";
   
   const script = `
     var doc = app.activeDocument;
-    if (doc.pages.length <= ${pageIndex}) {
-      throw new Error("Page index out of range.");
+    if (doc.pages.length < ${pageNumber}) {
+      throw new Error("Page number " + ${pageNumber} + " out of range. Document has " + doc.pages.length + " pages.");
     }
     
-    var page = doc.pages[${pageIndex}];
+    var page = doc.pages[${pageNumber} - 1];
     var textFrame = page.textFrames.add();
     
     // Set bounds [y1, x1, y2, x2]
@@ -128,7 +128,7 @@ async function handleCreateTextFrame(args: any): Promise<{ content: TextContent[
       textFrame.contents = "${textContent}";
     }
     
-    "Text frame created successfully on page " + (page.name || (${pageIndex} + 1));
+    "Text frame created successfully on page " + (page.name || ${pageNumber});
   `;
   
   const result = await executeExtendScript(script);
