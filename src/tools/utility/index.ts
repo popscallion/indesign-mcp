@@ -3,9 +3,10 @@
  * Batch 6: Text threading, overset resolution, text flow management, frame info
  */
 
+import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript } from "../../extendscript.js";
+import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { FrameScope, TextFlowAction } from "../../types.js";
 
 /**
@@ -15,54 +16,114 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
   // Register thread_text_frames tool
   server.tool(
     "thread_text_frames",
-    "Link text frames to continue text flow (threading)",
     {
-      source_frame_index: {
-        type: "integer",
-        description: "Index of the source text frame (0-based)"
-      },
-      target_frame_index: {
-        type: "integer",
-        description: "Index of the target text frame to thread to (0-based)"
-      },
-      frame_scope: {
-        type: "string",
-        enum: ["document", "page"],
-        description: "Whether to use document-wide or page-specific indexing",
-        default: "document"
-      },
-      page_number: {
-        type: "integer",
-        description: "Page number for page-specific indexing (1-based)",
-        default: 1
-      }
+      source_frame_index: z.number().int().describe("Index of the source text frame (0-based)"),
+      target_frame_index: z.number().int().describe("Index of the target text frame to thread to (0-based)"),
+      frame_scope: z.enum(["document", "page"]).default("document").describe("Whether to use document-wide or page-specific indexing"),
+      page_number: z.number().int().default(1).describe("Page number for page-specific indexing (1-based)")
     },
     async (args) => {
-      return await handleThreadTextFrames(args);
+      const sourceFrameIndex = args.source_frame_index || 0;
+      const targetFrameIndex = args.target_frame_index || 1;
+      const frameScope: FrameScope = args.frame_scope || "document";
+      const pageNumber = args.page_number || 1;
+      
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        var sourceFrame, targetFrame;
+        
+        if ("${frameScope}" === "document") {
+          // Use document-wide text frame indexing
+          if (doc.textFrames.length <= ${sourceFrameIndex}) {
+            throw new Error("Source text frame index " + ${sourceFrameIndex} + " out of range. Document has " + doc.textFrames.length + " text frames.");
+          }
+          if (doc.textFrames.length <= ${targetFrameIndex}) {
+            throw new Error("Target text frame index " + ${targetFrameIndex} + " out of range. Document has " + doc.textFrames.length + " text frames.");
+          }
+          
+          sourceFrame = doc.textFrames[${sourceFrameIndex}];
+          targetFrame = doc.textFrames[${targetFrameIndex}];
+        } else {
+          // Use page-specific text frame indexing
+          if (doc.pages.length < ${pageNumber}) {
+            throw new Error("Page number " + ${pageNumber} + " out of range. Document has " + doc.pages.length + " pages.");
+          }
+          
+          var page = doc.pages[${pageNumber} - 1];
+          if (page.textFrames.length <= ${sourceFrameIndex}) {
+            throw new Error("Source text frame index " + ${sourceFrameIndex} + " out of range on page " + ${pageNumber} + ". Page has " + page.textFrames.length + " text frames.");
+          }
+          
+          sourceFrame = page.textFrames[${sourceFrameIndex}];
+          
+          // For target, check if it's on same page or use document indexing
+          if (page.textFrames.length > ${targetFrameIndex}) {
+            targetFrame = page.textFrames[${targetFrameIndex}];
+          } else {
+            if (doc.textFrames.length <= ${targetFrameIndex}) {
+              throw new Error("Target text frame index " + ${targetFrameIndex} + " out of range in document.");
+            }
+            targetFrame = doc.textFrames[${targetFrameIndex}];
+          }
+        }
+        
+        // Check and handle existing threads
+        var warnings = [];
+        
+        if (sourceFrame.nextTextFrame && sourceFrame.nextTextFrame.isValid) {
+          warnings.push("Breaking existing outgoing thread from source frame");
+          sourceFrame.nextTextFrame = null;
+        }
+        
+        if (targetFrame.previousTextFrame && targetFrame.previousTextFrame.isValid) {
+          warnings.push("Breaking existing incoming thread to target frame");
+          targetFrame.previousTextFrame.nextTextFrame = null;
+        }
+        
+        // Perform the threading
+        try {
+          sourceFrame.nextTextFrame = targetFrame;
+        } catch (e) {
+          throw new Error("Failed to thread frames: " + e.message);
+        }
+        
+        var result = "Successfully threaded text frames:\\n";
+        result += "- Source: Frame " + ${sourceFrameIndex} + " (Has content: " + (sourceFrame.contents.length > 0) + ", Overflows: " + sourceFrame.overflows + ")\\n";
+        result += "- Target: Frame " + ${targetFrameIndex} + " (Now receives overflow text)";
+        
+        if (warnings.length > 0) {
+          result += "\\n\\nWarnings:\\n" + warnings.join("\\n");
+        }
+        
+        result;
+      `;
+      
+      const result = await executeExtendScript(script);
+      
+      return {
+        content: [{
+          type: "text",
+          text: result.success ? `Successfully threaded text frames:\n${result.result}` : `Error threading text frames: ${result.error}`
+        }]
+      };
     }
   );
 
   // Register resolve_overset_text tool
   server.tool(
     "resolve_overset_text",
-    "Automatically resolve overset text by threading to available frames",
     {
-      source_page: {
-        type: "integer",
-        description: "Page number with overset text (1-based)",
-        default: -1
-      },
-      target_pages: {
-        type: "array",
-        items: { type: "integer" },
-        description: "Target page numbers to thread to (1-based)",
-        default: []
-      },
-      create_frames_if_needed: {
-        type: "boolean",
-        description: "Create new text frames if target pages don't have them",
-        default: false
-      }
+      source_page: z.number().int().default(-1).describe("Page number with overset text (1-based)"),
+      target_pages: z.array(z.number().int()).default([]).describe("Target page numbers to thread to (1-based)"),
+      create_frames_if_needed: z.boolean().default(false).describe("Create new text frames if target pages don't have them")
     },
     async (args) => {
       return await handleResolveOversetText(args);
@@ -72,24 +133,10 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
   // Register manage_text_flow tool
   server.tool(
     "manage_text_flow",
-    "Advanced text flow management - break threads, check flow, etc.",
     {
-      action: {
-        type: "string",
-        enum: ["break_thread", "check_flow", "list_threaded", "thread_chain"],
-        description: "Action to perform"
-      },
-      frame_index: {
-        type: "integer",
-        description: "Text frame index for the action",
-        default: 0
-      },
-      frame_indices: {
-        type: "array",
-        items: { type: "integer" },
-        description: "Multiple frame indices for chain threading",
-        default: []
-      }
+      action: z.enum(["break_thread", "check_flow", "list_threaded", "thread_chain"]).describe("Action to perform"),
+      frame_index: z.number().int().default(0).describe("Text frame index for the action"),
+      frame_indices: z.array(z.number().int()).default([]).describe("Multiple frame indices for chain threading")
     },
     async (args) => {
       return await handleManageTextFlow(args);
@@ -99,18 +146,9 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
   // Register get_textframe_info tool
   server.tool(
     "get_textframe_info",
-    "Get detailed information about text frames and their threading",
     {
-      page_number: {
-        type: "integer",
-        description: "Specific page number (1-based), or -1 for all pages",
-        default: -1
-      },
-      include_threading: {
-        type: "boolean",
-        description: "Include threading information",
-        default: true
-      }
+      page_number: z.number().int().default(-1).describe("Specific page number (1-based), or -1 for all pages"),
+      include_threading: z.boolean().default(true).describe("Include threading information")
     },
     async (args) => {
       return await handleGetTextFrameInfo(args);
@@ -120,18 +158,9 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
   // Register inspect_frame_bounds tool
   server.tool(
     "inspect_frame_bounds",
-    "Get precise bounds and properties of text frames on specific pages",
     {
-      page_number: {
-        type: "integer",
-        description: "Page number to inspect (1-based)",
-        default: 4
-      },
-      include_all_properties: {
-        type: "boolean",
-        description: "Include additional frame properties",
-        default: false
-      }
+      page_number: z.number().int().default(4).describe("Page number to inspect (1-based)"),
+      include_all_properties: z.boolean().default(false).describe("Include additional frame properties")
     },
     async (args) => {
       return await handleInspectFrameBounds(args);
@@ -141,122 +170,18 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
   // Register copy_textframe_properties tool
   server.tool(
     "copy_textframe_properties",
-    "Copy text frame properties from one page to create matching frames on other pages",
     {
-      source_page: {
-        type: "integer",
-        description: "Source page number (1-based)",
-        default: 4
-      },
-      target_pages: {
-        type: "array",
-        items: { type: "integer" },
-        description: "Target page numbers",
-        default: [6, 7]
-      },
-      source_frame_index: {
-        type: "integer",
-        description: "Index of frame to copy (0-based)",
-        default: 0
-      },
-      replace_existing: {
-        type: "boolean",
-        description: "Remove existing frames on target pages before creating new ones",
-        default: false
-      }
+      source_page: z.number().int().default(4).describe("Source page number (1-based)"),
+      target_pages: z.array(z.number().int()).default([6, 7]).describe("Target page numbers"),
+      source_frame_index: z.number().int().default(0).describe("Index of frame to copy (0-based)"),
+      replace_existing: z.boolean().default(false).describe("Remove existing frames on target pages before creating new ones")
     },
     async (args) => {
       return await handleCopyTextFrameProperties(args);
     }
   );
-}
 
-
-async function handleThreadTextFrames(args: any): Promise<{ content: TextContent[] }> {
-  const sourceFrameIndex = args.source_frame_index;
-  const targetFrameIndex = args.target_frame_index;
-  const frameScope: FrameScope = args.frame_scope || "document";
-  const pageNumber = args.page_number || 1;
-  
-  const script = `
-    var doc = app.activeDocument;
-    var sourceFrame, targetFrame;
-    
-    if ("${frameScope}" === "document") {
-      // Use document-wide text frame indexing
-      if (doc.textFrames.length <= ${sourceFrameIndex}) {
-        throw new Error("Source text frame index " + ${sourceFrameIndex} + " out of range. Document has " + doc.textFrames.length + " text frames.");
-      }
-      if (doc.textFrames.length <= ${targetFrameIndex}) {
-        throw new Error("Target text frame index " + ${targetFrameIndex} + " out of range. Document has " + doc.textFrames.length + " text frames.");
-      }
-      
-      sourceFrame = doc.textFrames[${sourceFrameIndex}];
-      targetFrame = doc.textFrames[${targetFrameIndex}];
-    } else {
-      // Use page-specific text frame indexing
-      if (doc.pages.length < ${pageNumber}) {
-        throw new Error("Page number " + ${pageNumber} + " out of range. Document has " + doc.pages.length + " pages.");
-      }
-      
-      var page = doc.pages[${pageNumber} - 1];
-      if (page.textFrames.length <= ${sourceFrameIndex}) {
-        throw new Error("Source text frame index " + ${sourceFrameIndex} + " out of range on page " + ${pageNumber} + ". Page has " + page.textFrames.length + " text frames.");
-      }
-      
-      sourceFrame = page.textFrames[${sourceFrameIndex}];
-      
-      // For target, check if it's on same page or use document indexing
-      if (page.textFrames.length > ${targetFrameIndex}) {
-        targetFrame = page.textFrames[${targetFrameIndex}];
-      } else {
-        if (doc.textFrames.length <= ${targetFrameIndex}) {
-          throw new Error("Target text frame index " + ${targetFrameIndex} + " out of range in document.");
-        }
-        targetFrame = doc.textFrames[${targetFrameIndex}];
-      }
-    }
-    
-    // Check and handle existing threads
-    var warnings = [];
-    
-    if (sourceFrame.nextTextFrame && sourceFrame.nextTextFrame.isValid) {
-      warnings.push("Breaking existing outgoing thread from source frame");
-      sourceFrame.nextTextFrame = null;
-    }
-    
-    if (targetFrame.previousTextFrame && targetFrame.previousTextFrame.isValid) {
-      warnings.push("Breaking existing incoming thread to target frame");
-      targetFrame.previousTextFrame.nextTextFrame = null;
-    }
-    
-    // Perform the threading
-    try {
-      sourceFrame.nextTextFrame = targetFrame;
-    } catch (e) {
-      throw new Error("Failed to thread frames: " + e.message);
-    }
-    
-    var result = "Successfully threaded text frames:\\n";
-    result += "- Source: Frame " + ${sourceFrameIndex} + " (Has content: " + (sourceFrame.contents.length > 0) + ", Overflows: " + sourceFrame.overflows + ")\\n";
-    result += "- Target: Frame " + ${targetFrameIndex} + " (Now receives overflow text)";
-    
-    if (warnings.length > 0) {
-      result += "\\n\\nWarnings:\\n" + warnings.join("\\n");
-    }
-    
-    result;
-  `;
-  
-  const result = await executeExtendScript(script);
-  
-  return {
-    content: [{
-      type: "text",
-      text: result.success ? `Successfully threaded text frames:\n${result.result}` : `Error threading text frames: ${result.error}`
-    }]
-  };
-}
+  // Register resolve_overset_text tool
 
 async function handleResolveOversetText(args: any): Promise<{ content: TextContent[] }> {
   const sourcePage = args.source_page || -1;
@@ -363,7 +288,15 @@ async function handleManageTextFlow(args: any): Promise<{ content: TextContent[]
   const frameIndices = JSON.stringify(args.frame_indices || []);
   
   const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign. Please open a document first.");
+    }
+    
     var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
     var result = "";
     
     switch ("${action}") {
@@ -713,4 +646,5 @@ async function handleCopyTextFrameProperties(args: any): Promise<{ content: Text
       text: result.success ? `Successfully copied frame properties:\n${result.result}` : `Error copying frame properties: ${result.error}`
     }]
   };
+}
 }

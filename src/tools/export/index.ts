@@ -6,6 +6,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { ExportFormat, ExportQuality, ImportOptions } from "../../types.js";
+import { z } from "zod";
 
 /**
  * Registers all document export/import tools with the MCP server
@@ -14,37 +15,19 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   // Register export_document tool
   server.tool(
     "export_document",
-    "Export InDesign document to various formats (PDF, EPUB, HTML, IDML, JPEG, PNG, EPS)",
     {
-      format: {
-        type: "string",
-        description: "Export format",
-        enum: ["PDF", "EPUB", "HTML", "IDML", "JPEG", "PNG", "EPS"]
-      },
-      path: {
-        type: "string",
-        description: "Export file path"
-      },
-      quality: {
-        type: "string",
-        description: "Export quality setting",
-        enum: ["high", "medium", "low"],
-        default: "high"
-      },
-      pages: {
-        type: "string",
-        description: "Page range to export (e.g., 'all', '1-5', '3,7,9')",
-        default: "all"
-      },
-      spreads: {
-        type: "boolean", 
-        description: "Export as spreads instead of individual pages",
-        default: false
-      }
+      format: z.enum(["PDF", "EPUB", "HTML", "IDML", "JPEG", "PNG", "EPS"]).describe("Export format"),
+      filePath: z.string().describe("Export file path"),
+      quality: z.enum(["high", "medium", "low"]).default("high").describe("Export quality setting"),
+      pages: z.string().default("all").describe("Page range to export (e.g., 'all', '1-5', '3,7,9')"),
+      spreads: z.boolean().default(false).describe("Export as spreads instead of individual pages")
     },
     async (args) => {
       const format: ExportFormat = args.format;
-      const path = escapeExtendScriptString(args.path);
+      if (!args.filePath) {
+        throw new Error("filePath parameter is required");
+      }
+      const path = escapeExtendScriptString(args.filePath);
       const quality: ExportQuality = args.quality || "high";
       const pages = args.pages || "all";
       const spreads = args.spreads || false;
@@ -154,20 +137,12 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   // Register save_document tool
   server.tool(
     "save_document",
-    "Save the current InDesign document",
     {
-      path: {
-        type: "string",
-        description: "Save path (optional - uses current location if not specified)"
-      },
-      copy: {
-        type: "boolean",
-        description: "Save as copy without changing current document",
-        default: false
-      }
+      filePath: z.string().optional().describe("Save path (optional - uses current location if not specified)"),
+      copy: z.boolean().default(false).describe("Save as copy without changing current document")
     },
     async (args) => {
-      const path = args.path ? escapeExtendScriptString(args.path) : null;
+      const path = args.filePath ? escapeExtendScriptString(args.filePath) : null;
       const copy = args.copy || false;
 
       const script = `
@@ -222,30 +197,17 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   // Register import_content tool
   server.tool(
     "import_content",
-    "Import content from external files (text, images, other documents)",
     {
-      path: {
-        type: "string",
-        description: "Path to file to import"
-      },
-      link_file: {
-        type: "boolean",
-        description: "Link to file instead of embedding",
-        default: true
-      },
-      show_options: {
-        type: "boolean", 
-        description: "Show import options dialog",
-        default: false
-      },
-      retain_format: {
-        type: "boolean",
-        description: "Retain formatting from source file",
-        default: true
-      }
+      filePath: z.string().describe("Path to file to import"),
+      link_file: z.boolean().default(true).describe("Link to file instead of embedding"),
+      show_options: z.boolean().default(false).describe("Show import options dialog"),
+      retain_format: z.boolean().default(true).describe("Retain formatting from source file")
     },
     async (args) => {
-      const path = escapeExtendScriptString(args.path);
+      if (!args.filePath) {
+        throw new Error("filePath parameter is required");
+      }
+      const path = escapeExtendScriptString(args.filePath);
       const linkFile = args.link_file !== false; // default true
       const showOptions = args.show_options || false;
       const retainFormat = args.retain_format !== false; // default true
@@ -314,45 +276,21 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   // Register place_file tool
   server.tool(
     "place_file",
-    "Place an external file (image, text, document) into the current InDesign document",
     {
-      path: {
-        type: "string",
-        description: "Path to file to place"
-      },
-      x: {
-        type: "number",
-        description: "X position for placed content",
-        default: 72
-      },
-      y: {
-        type: "number",
-        description: "Y position for placed content", 
-        default: 72
-      },
-      width: {
-        type: "number",
-        description: "Width for placed content",
-        default: 200
-      },
-      height: {
-        type: "number",
-        description: "Height for placed content",
-        default: 200
-      },
-      link_file: {
-        type: "boolean",
-        description: "Link to file instead of embedding",
-        default: true
-      },
-      fit_content: {
-        type: "boolean",
-        description: "Automatically fit content to frame",
-        default: true
-      }
+      filePath: z.string().describe("Path to file to place"),
+      x: z.number().default(72).describe("X position for placed content"),
+      y: z.number().default(72).describe("Y position for placed content"),
+      width: z.number().default(200).describe("Width for placed content"),
+      height: z.number().default(200).describe("Height for placed content"),
+      link_file: z.boolean().default(true).describe("Link to file instead of embedding"),
+      fit_content: z.boolean().default(true).describe("Automatically fit content to frame")
     },
     async (args) => {
-      const path = escapeExtendScriptString(args.path);
+      const filePath = args.filePath;
+      if (!filePath) {
+        throw new Error("filePath parameter is required");
+      }
+      const path = escapeExtendScriptString(filePath);
       const x = args.x || 72;
       const y = args.y || 72;
       const width = args.width || 200;
@@ -436,16 +374,11 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   // Register get_page_dimensions tool
   server.tool(
     "get_page_dimensions",
-    "Get dimensions and properties of pages in the document",
     {
-      page_number: {
-        type: "number",
-        description: "Page number to get dimensions for (1-based), or 0 for all pages",
-        default: 1
-      }
+      pageNumber: z.number().default(1).describe("Page number to get dimensions for (1-based), or 0 for all pages")
     },
     async (args) => {
-      const pageNumber = args.page_number || 1;
+      const pageNumber = args.pageNumber || 1;
 
       const script = `
         if (app.documents.length === 0) {
@@ -458,62 +391,34 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         }
         
         try {
-          var result = [];
+          var page = doc.pages[0];
+          var bounds = page.bounds;
+          var width = bounds[3] - bounds[1];
+          var height = bounds[2] - bounds[0];
           
-          if (${pageNumber} === 0) {
-            // Get all pages
-            for (var i = 0; i < doc.pages.length; i++) {
-              var page = doc.pages[i];
-              var bounds = page.bounds;
-              var marginPrefs = page.marginPreferences;
-              
-              var pageInfo = {
-                number: i + 1,
-                name: page.name,
-                width: bounds[3] - bounds[1],
-                height: bounds[2] - bounds[0],
-                bounds: [bounds[0], bounds[1], bounds[2], bounds[3]],
-                margins: {
-                  top: marginPrefs.top,
-                  left: marginPrefs.left,
-                  bottom: marginPrefs.bottom,
-                  right: marginPrefs.right
-                },
-                orientation: (bounds[3] - bounds[1]) > (bounds[2] - bounds[0]) ? "landscape" : "portrait"
-              };
-              result.push(pageInfo);
+          // Get the document's measurement unit - no conversion needed as bounds are already in doc units
+          var unit = "mm"; // If InDesign is set to mm, bounds should already be in mm
+          
+          try {
+            var appUnits = app.viewPreferences.horizontalMeasurementUnits;
+            if (appUnits == MeasurementUnits.MILLIMETERS) {
+              unit = "mm";
+            } else if (appUnits == MeasurementUnits.INCHES || appUnits == MeasurementUnits.INCHES_DECIMAL) {
+              unit = "in";
+            } else if (appUnits == MeasurementUnits.CENTIMETERS) {
+              unit = "cm";
+            } else if (appUnits == MeasurementUnits.PICAS) {
+              unit = "p";
+            } else if (appUnits == MeasurementUnits.POINTS) {
+              unit = "pts";
+            } else {
+              unit = "units"; // Unknown unit
             }
-            
-            JSON.stringify(result);
-            
-          } else {
-            // Get specific page
-            if (${pageNumber} > doc.pages.length || ${pageNumber} < 1) {
-              throw new Error("Page number " + ${pageNumber} + " is out of range. Document has " + doc.pages.length + " pages.");
-            }
-            
-            var page = doc.pages[${pageNumber} - 1];
-            var bounds = page.bounds;
-            var marginPrefs = page.marginPreferences;
-            
-            var pageInfo = {
-              number: ${pageNumber},
-              name: page.name,
-              width: bounds[3] - bounds[1],
-              height: bounds[2] - bounds[0],
-              bounds: [bounds[0], bounds[1], bounds[2], bounds[3]],
-              margins: {
-                top: marginPrefs.top,
-                left: marginPrefs.left,
-                bottom: marginPrefs.bottom,
-                right: marginPrefs.right
-              },
-              orientation: (bounds[3] - bounds[1]) > (bounds[2] - bounds[0]) ? "landscape" : "portrait"
-            };
-            
-            JSON.stringify(pageInfo);
+          } catch(e) {
+            unit = "error";
           }
           
+          "Page 1: " + width + " x " + height + " " + unit + " (detected: " + appUnits + ")";
         } catch (e) {
           throw new Error("Get page dimensions failed: " + e.message);
         }
@@ -521,31 +426,15 @@ export async function registerExportTools(server: McpServer): Promise<void> {
 
       const result = await executeExtendScript(script);
 
-      if (result.success) {
-        try {
-          const pageData = JSON.parse(result.result || "{}");
-          return {
-            content: [{
-              type: "text",
-              text: `Page dimensions:\n${JSON.stringify(pageData, null, 2)}`
-            }]
-          };
-        } catch (parseError) {
-          return {
-            content: [{
-              type: "text",
-              text: `Page dimensions: ${result.result || "No result"}`
-            }]
-          };
-        }
-      } else {
-        return {
-          content: [{
-            type: "text",
-            text: `Get page dimensions failed: ${result.error}`
-          }]
-        };
-      }
+      return {
+        content: [{
+          type: "text",
+          text: result.success ? 
+            `Page dimensions: ${result.result || "No result"}` :
+            `Get page dimensions failed: ${result.error}`
+        }]
+      };
     }
   );
+
 }

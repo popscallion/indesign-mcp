@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { TextAlignment, FontStyle, SelectionType } from "../../types.js";
+import { z } from "zod";
 
 /**
  * Registers all style management tools with the MCP server
@@ -15,7 +16,6 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register list_paragraph_styles tool
   server.tool(
     "list_paragraph_styles",
-    "List all available paragraph styles in the active document",
     {},
     async (args) => {
       return await handleListParagraphStyles(args);
@@ -25,22 +25,10 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register apply_paragraph_style tool
   server.tool(
     "apply_paragraph_style",
-    "Apply a paragraph style to specified text or selection",
     {
-      style_name: {
-        type: "string",
-        description: "Name of the paragraph style to apply"
-      },
-      target_text: {
-        type: "string",
-        description: "Text to find and apply style to (optional - if not provided, applies to current selection)",
-        default: ""
-      },
-      all_occurrences: {
-        type: "boolean",
-        description: "Apply to all occurrences of target_text",
-        default: false
-      }
+      style_name: z.string().describe("Name of the paragraph style to apply"),
+      target_text: z.string().default("").describe("Text to find and apply style to (optional - if not provided, applies to current selection)"),
+      all_occurrences: z.boolean().default(false).describe("Apply to all occurrences of target_text")
     },
     async (args) => {
       return await handleApplyParagraphStyle(args);
@@ -50,38 +38,13 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register create_paragraph_style tool
   server.tool(
     "create_paragraph_style",
-    "Create a new paragraph style with specified properties",
     {
-      style_name: {
-        type: "string",
-        description: "Name for the new paragraph style"
-      },
-      font_size: {
-        type: "number",
-        description: "Font size in points",
-        default: 12
-      },
-      font_family: {
-        type: "string",
-        description: "Font family name",
-        default: ""
-      },
-      alignment: {
-        type: "string",
-        description: "Text alignment",
-        enum: ["left", "center", "right", "justify"],
-        default: "left"
-      },
-      space_before: {
-        type: "number",
-        description: "Space before paragraph in points",
-        default: 0
-      },
-      space_after: {
-        type: "number",
-        description: "Space after paragraph in points",
-        default: 0
-      }
+      style_name: z.string().describe("Name for the new paragraph style"),
+      font_size: z.number().default(12).describe("Font size in points"),
+      font_family: z.string().default("").describe("Font family name"),
+      alignment: z.enum(["left", "center", "right", "justify"]).default("left").describe("Text alignment"),
+      space_before: z.number().default(0).describe("Space before paragraph in points"),
+      space_after: z.number().default(0).describe("Space after paragraph in points")
     },
     async (args) => {
       return await handleCreateParagraphStyle(args);
@@ -91,26 +54,11 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register select_text_range tool
   server.tool(
     "select_text_range",
-    "Select text by paragraph number or text content for styling",
     {
-      selection_type: {
-        type: "string",
-        enum: ["paragraph_number", "text_content", "story_range"],
-        description: "How to select the text"
-      },
-      paragraph_number: {
-        type: "integer",
-        description: "Paragraph number to select (1-based)"
-      },
-      text_content: {
-        type: "string",
-        description: "Text content to find and select"
-      },
-      story_index: {
-        type: "integer",
-        description: "Story index (0-based)",
-        default: 0
-      }
+      selection_type: z.enum(["paragraph_number", "text_content", "story_range"]).describe("How to select the text"),
+      paragraph_number: z.number().optional().describe("Paragraph number to select (1-based)"),
+      text_content: z.string().optional().describe("Text content to find and select"),
+      story_index: z.number().default(0).describe("Story index (0-based)")
     },
     async (args) => {
       return await handleSelectTextRange(args);
@@ -120,7 +68,6 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register list_character_styles tool
   server.tool(
     "list_character_styles",
-    "List all available character styles in the active document",
     {},
     async (args) => {
       return await handleListCharacterStyles(args);
@@ -130,21 +77,10 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register apply_character_style tool
   server.tool(
     "apply_character_style",
-    "Apply a character style to specified text",
     {
-      style_name: {
-        type: "string",
-        description: "Name of the character style"
-      },
-      target_text: {
-        type: "string",
-        description: "Text to find and apply style to"
-      },
-      all_occurrences: {
-        type: "boolean",
-        description: "Apply to all occurrences",
-        default: false
-      }
+      style_name: z.string().describe("Name of the character style"),
+      target_text: z.string().describe("Text to find and apply style to"),
+      all_occurrences: z.boolean().default(false).describe("Apply to all occurrences")
     },
     async (args) => {
       return await handleApplyCharacterStyle(args);
@@ -154,37 +90,13 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
   // Register create_character_style tool
   server.tool(
     "create_character_style",
-    "Create a new character style with specified properties",
     {
-      style_name: {
-        type: "string",
-        description: "Name for the new character style"
-      },
-      font_size: {
-        type: "number",
-        description: "Font size in points",
-        default: 12
-      },
-      font_family: {
-        type: "string",
-        description: "Font family name",
-        default: ""
-      },
-      font_style: {
-        type: "string",
-        description: "Font style (Regular, Bold, Italic)",
-        default: "Regular"
-      },
-      fill_color: {
-        type: "string",
-        description: "Fill color name",
-        default: "[Black]"
-      },
-      tracking: {
-        type: "number",
-        description: "Character tracking",
-        default: 0
-      }
+      style_name: z.string().describe("Name for the new character style"),
+      font_size: z.number().default(12).describe("Font size in points"),
+      font_family: z.string().default("").describe("Font family name"),
+      font_style: z.string().default("Regular").describe("Font style (Regular, Bold, Italic)"),
+      fill_color: z.string().default("[Black]").describe("Fill color name"),
+      tracking: z.number().default(0).describe("Character tracking")
     },
     async (args) => {
       return await handleCreateCharacterStyle(args);
@@ -238,6 +150,10 @@ async function handleListParagraphStyles(args: any): Promise<{ content: TextCont
 }
 
 async function handleApplyParagraphStyle(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.style_name) {
+    throw new Error("style_name parameter is required");
+  }
+  
   const styleName = escapeExtendScriptString(args.style_name);
   const targetText = args.target_text ? escapeExtendScriptString(args.target_text) : "";
   const allOccurrences = args.all_occurrences || false;
@@ -307,6 +223,10 @@ async function handleApplyParagraphStyle(args: any): Promise<{ content: TextCont
 }
 
 async function handleCreateParagraphStyle(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.style_name) {
+    throw new Error("style_name parameter is required");
+  }
+  
   const styleName = escapeExtendScriptString(args.style_name);
   const fontSize = args.font_size || 12;
   const fontFamily = args.font_family ? escapeExtendScriptString(args.font_family) : "";
@@ -378,6 +298,15 @@ async function handleCreateParagraphStyle(args: any): Promise<{ content: TextCon
 }
 
 async function handleSelectTextRange(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.selection_type) {
+    throw new Error("selection_type parameter is required");
+  }
+  
+  // Validate required parameters based on selection type
+  if (args.selection_type === "text_content" && !args.text_content) {
+    throw new Error("text_content parameter is required when selection_type is 'text_content'");
+  }
+  
   const selectionType: SelectionType = args.selection_type;
   const paragraphNumber = args.paragraph_number || 1;
   const textContent = args.text_content ? escapeExtendScriptString(args.text_content) : "";
@@ -491,6 +420,13 @@ async function handleListCharacterStyles(args: any): Promise<{ content: TextCont
 }
 
 async function handleApplyCharacterStyle(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.style_name) {
+    throw new Error("style_name parameter is required");
+  }
+  if (!args.target_text) {
+    throw new Error("target_text parameter is required");
+  }
+  
   const styleName = escapeExtendScriptString(args.style_name);
   const targetText = escapeExtendScriptString(args.target_text);
   const allOccurrences = args.all_occurrences || false;
@@ -546,6 +482,10 @@ async function handleApplyCharacterStyle(args: any): Promise<{ content: TextCont
 }
 
 async function handleCreateCharacterStyle(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.style_name) {
+    throw new Error("style_name parameter is required");
+  }
+  
   const styleName = escapeExtendScriptString(args.style_name);
   const fontSize = args.font_size || 12;
   const fontFamily = args.font_family ? escapeExtendScriptString(args.font_family) : "";

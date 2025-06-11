@@ -6,30 +6,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { TextPosition } from "../../types.js";
+import { z } from "zod";
 
 /**
  * Registers all text manipulation tools with the MCP server
  */
 export async function registerTextTools(server: McpServer): Promise<void> {
-  // Register add_text tool
+  // Register add_text tool  
   server.tool(
     "add_text",
-    "Add text to an InDesign document",
     {
-      text: {
-        type: "string",
-        description: "The text to add to the document"
-      },
-      position: {
-        type: "string",
-        description: "Position to add text (start, end, or after_selection)",
-        enum: ["start", "end", "after_selection"],
-        default: "end"
-      }
+      text: z.string().describe("Text to add to the document"),
+      position: z.enum(["start", "end", "after_selection"]).default("end").describe("Position where to add the text")
     },
-    async (args) => {
-      const text = escapeExtendScriptString(args.text);
-      const position: TextPosition = args.position || "end";
+    async ({ text, position }) => {
+      const escapedText = escapeExtendScriptString(text);
+      const textPosition: TextPosition = position || "end";
       
       const script = `
         if (app.documents.length === 0) {
@@ -48,15 +40,15 @@ export async function registerTextTools(server: McpServer): Promise<void> {
         var story = doc.stories[0];
         var insertionPoint;
         
-        if ("${position}" === "start") {
+        if ("${textPosition}" === "start") {
           insertionPoint = story.insertionPoints[0];
-        } else if ("${position}" === "end") {
+        } else if ("${textPosition}" === "end") {
           insertionPoint = story.insertionPoints[-1];
         } else {
           insertionPoint = story.insertionPoints[-1];
         }
         
-        insertionPoint.contents = "${text}";
+        insertionPoint.contents = "${escapedText}";
         "Text added successfully to " + doc.name;
       `;
       
@@ -66,7 +58,7 @@ export async function registerTextTools(server: McpServer): Promise<void> {
         return {
           content: [{
             type: "text",
-            text: `Successfully added text: '${args.text}'`
+            text: `Successfully added text: '${text}'`
           }]
         };
       } else {
@@ -100,6 +92,12 @@ export async function registerTextTools(server: McpServer): Promise<void> {
       }
     },
     async (args) => {
+      if (!args.find_text) {
+        throw new Error("find_text parameter is required");
+      }
+      if (!args.replace_text && args.replace_text !== "") {
+        throw new Error("replace_text parameter is required");
+      }
       const findText = escapeExtendScriptString(args.find_text);
       const replaceText = escapeExtendScriptString(args.replace_text);
       const allOccurrences = args.all_occurrences || false;
@@ -164,6 +162,9 @@ export async function registerTextTools(server: McpServer): Promise<void> {
       }
     },
     async (args) => {
+      if (!args.text) {
+        throw new Error("text parameter is required");
+      }
       const text = escapeExtendScriptString(args.text);
       const allOccurrences = args.all_occurrences || false;
       

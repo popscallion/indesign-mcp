@@ -6,6 +6,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { z } from "zod";
 
 /**
  * Registers layout and positioning tools with the MCP server
@@ -14,31 +15,12 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
   // Register position_textframe tool
   server.tool(
     "position_textframe",
-    "Move and resize text frames with precise positioning",
     {
-      textframe_index: {
-        type: "integer",
-        description: "Index of text frame (0-based)",
-        default: 0
-      },
-      x: {
-        type: "number",
-        description: "X position in points"
-      },
-      y: {
-        type: "number",
-        description: "Y position in points"
-      },
-      width: {
-        type: "number",
-        description: "Width in points (optional)",
-        default: -1
-      },
-      height: {
-        type: "number",
-        description: "Height in points (optional)",
-        default: -1
-      }
+      textframe_index: z.number().default(0).describe("Index of text frame (0-based)"),
+      x: z.number().describe("X position in points"),
+      y: z.number().describe("Y position in points"),
+      width: z.number().default(-1).describe("Width in points (optional)"),
+      height: z.number().default(-1).describe("Height in points (optional)")
     },
     async (args) => {
       return await handlePositionTextFrame(args);
@@ -48,34 +30,13 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
   // Register create_textframe tool
   server.tool(
     "create_textframe",
-    "Create a new text frame with specified position and size",
     {
-      x: {
-        type: "number",
-        description: "X position in points"
-      },
-      y: {
-        type: "number",
-        description: "Y position in points"
-      },
-      width: {
-        type: "number",
-        description: "Width in points"
-      },
-      height: {
-        type: "number",
-        description: "Height in points"
-      },
-      page_index: {
-        type: "integer",
-        description: "Page index (0-based)",
-        default: 0
-      },
-      text_content: {
-        type: "string",
-        description: "Initial text content",
-        default: ""
-      }
+      x: z.number().describe("X position in points"),
+      y: z.number().describe("Y position in points"),
+      width: z.number().describe("Width in points"),
+      height: z.number().describe("Height in points"),
+      page_index: z.number().default(0).describe("Page index (0-based)"),
+      text_content: z.string().default("").describe("Initial text content")
     },
     async (args) => {
       return await handleCreateTextFrame(args);
@@ -85,6 +46,13 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
 
 
 async function handlePositionTextFrame(args: any): Promise<{ content: TextContent[] }> {
+  if (args.x === undefined || args.x === null) {
+    throw new Error("x parameter is required");
+  }
+  if (args.y === undefined || args.y === null) {
+    throw new Error("y parameter is required");
+  }
+  
   const textFrameIndex = args.textframe_index || 0;
   const x = args.x;
   const y = args.y;
@@ -124,6 +92,19 @@ async function handlePositionTextFrame(args: any): Promise<{ content: TextConten
 }
 
 async function handleCreateTextFrame(args: any): Promise<{ content: TextContent[] }> {
+  if (args.x === undefined || args.x === null) {
+    throw new Error("x parameter is required");
+  }
+  if (args.y === undefined || args.y === null) {
+    throw new Error("y parameter is required");
+  }
+  if (args.width === undefined || args.width === null) {
+    throw new Error("width parameter is required");
+  }
+  if (args.height === undefined || args.height === null) {
+    throw new Error("height parameter is required");
+  }
+  
   const x = args.x;
   const y = args.y;
   const width = args.width;

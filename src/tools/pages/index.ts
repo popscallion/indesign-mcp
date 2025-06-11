@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { PageLocation } from "../../types.js";
+import { z } from "zod";
 
 /**
  * Registers page management tools with the MCP server
@@ -15,24 +16,10 @@ export async function registerPageTools(server: McpServer): Promise<void> {
   // Register add_pages tool
   server.tool(
     "add_pages",
-    "Add new pages to the document",
     {
-      page_count: {
-        type: "integer",
-        description: "Number of pages to add",
-        default: 1
-      },
-      location: {
-        type: "string",
-        enum: ["beginning", "end", "after_current"],
-        description: "Where to add pages",
-        default: "end"
-      },
-      master_spread: {
-        type: "string",
-        description: "Master spread to apply",
-        default: ""
-      }
+      page_count: z.number().default(1).describe("Number of pages to add"),
+      location: z.enum(["beginning", "end", "after_current"]).default("end").describe("Where to add pages"),
+      master_spread: z.string().default("").describe("Master spread to apply")
     },
     async (args) => {
       return await handleAddPages(args);
@@ -42,12 +29,8 @@ export async function registerPageTools(server: McpServer): Promise<void> {
   // Register remove_pages tool
   server.tool(
     "remove_pages",
-    "Remove pages from the document",
     {
-      page_range: {
-        type: "string",
-        description: "Page range to remove (e.g., '2-4' or '3')"
-      }
+      page_range: z.string().describe("Page range to remove (e.g., '2-4' or '3')")
     },
     async (args) => {
       return await handleRemovePages(args);
@@ -57,13 +40,8 @@ export async function registerPageTools(server: McpServer): Promise<void> {
   // Register get_page_info tool
   server.tool(
     "get_page_info",
-    "Get information about pages in the document",
     {
-      page_number: {
-        type: "integer",
-        description: "Specific page number (1-based), or -1 for all pages",
-        default: -1
-      }
+      page_number: z.number().default(-1).describe("Specific page number (1-based), or -1 for all pages")
     },
     async (args) => {
       return await handleGetPageInfo(args);
@@ -126,6 +104,10 @@ async function handleAddPages(args: any): Promise<{ content: TextContent[] }> {
 }
 
 async function handleRemovePages(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.page_range) {
+    throw new Error("page_range parameter is required");
+  }
+  
   const pageRange = escapeExtendScriptString(args.page_range);
   
   const script = `

@@ -3,6 +3,7 @@
  * Batch 1.3: Object transformation - transform_objects, duplicate_objects, align_distribute_objects
  */
 
+import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { TransformationType, AlignmentType, DistributionType, TransformValues } from "../../types.js";
@@ -14,46 +15,17 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
   // Register transform_objects tool
   server.tool(
     "transform_objects",
-    "Transform selected objects or all objects with move, scale, rotate, or skew operations",
     {
-      transformation: {
-        type: "string",
-        description: "Type of transformation to apply",
-        enum: ["move", "scale", "rotate", "skew"]
-      },
-      x: {
-        type: "number",
-        description: "X offset for move, X scale factor for scale, or X coordinate",
-        default: 0
-      },
-      y: {
-        type: "number", 
-        description: "Y offset for move, Y scale factor for scale, or Y coordinate",
-        default: 0
-      },
-      rotation: {
-        type: "number",
-        description: "Rotation angle in degrees for rotate transformation",
-        default: 0
-      },
-      scale_x: {
-        type: "number",
-        description: "X scale factor (1.0 = 100%)",
-        default: 1.0
-      },
-      scale_y: {
-        type: "number",
-        description: "Y scale factor (1.0 = 100%)",
-        default: 1.0
-      },
-      use_selection: {
-        type: "boolean",
-        description: "Transform only selected objects, or all objects if none selected",
-        default: true
-      }
+      operation: z.enum(["move", "scale", "rotate", "skew"]).describe("Type of transformation to apply"),
+      x: z.number().default(0).describe("X offset for move, X scale factor for scale, or X coordinate"),
+      y: z.number().default(0).describe("Y offset for move, Y scale factor for scale, or Y coordinate"),
+      rotation: z.number().default(0).describe("Rotation angle in degrees for rotate transformation"),
+      scale_x: z.number().default(1.0).describe("X scale factor (1.0 = 100%)"),
+      scale_y: z.number().default(1.0).describe("Y scale factor (1.0 = 100%)"),
+      use_selection: z.boolean().default(true).describe("Transform only selected objects, or all objects if none selected")
     },
     async (args) => {
-      const transformation: TransformationType = args.transformation;
+      const transformation: TransformationType = args.operation;
       const x = args.x || 0;
       const y = args.y || 0;
       const rotation = args.rotation || 0;
@@ -161,32 +133,15 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
   // Register duplicate_objects tool
   server.tool(
     "duplicate_objects",
-    "Duplicate selected objects or all objects with offset positioning",
     {
-      offset_x: {
-        type: "number",
-        description: "X offset for duplicated objects",
-        default: 10
-      },
-      offset_y: {
-        type: "number",
-        description: "Y offset for duplicated objects", 
-        default: 10
-      },
-      count: {
-        type: "number",
-        description: "Number of duplicates to create",
-        default: 1
-      },
-      use_selection: {
-        type: "boolean",
-        description: "Duplicate only selected objects, or all objects if none selected",
-        default: true
-      }
+      offsetX: z.number().default(10).describe("X offset for duplicated objects"),
+      offsetY: z.number().default(10).describe("Y offset for duplicated objects"),
+      count: z.number().default(1).describe("Number of duplicates to create"),
+      use_selection: z.boolean().default(true).describe("Duplicate only selected objects, or all objects if none selected")
     },
     async (args) => {
-      const offsetX = args.offset_x || 10;
-      const offsetY = args.offset_y || 10;
+      const offsetX = args.offsetX || 10;
+      const offsetY = args.offsetY || 10;
       const count = Math.max(1, Math.min(args.count || 1, 10)); // Limit to 10 duplicates
       const useSelection = args.use_selection !== false;
 
@@ -281,28 +236,11 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
   // Register align_distribute_objects tool
   server.tool(
     "align_distribute_objects",
-    "Align or distribute selected objects using various alignment options",
     {
-      operation: {
-        type: "string",
-        description: "Alignment or distribution operation",
-        enum: ["align", "distribute"]
-      },
-      alignment: {
-        type: "string",
-        description: "Alignment type (for align operation)",
-        enum: ["left", "center", "right", "top", "middle", "bottom"]
-      },
-      distribution: {
-        type: "string", 
-        description: "Distribution type (for distribute operation)",
-        enum: ["horizontal", "vertical"]
-      },
-      use_page_bounds: {
-        type: "boolean",
-        description: "Align/distribute relative to page bounds instead of selection bounds",
-        default: false
-      }
+      operation: z.enum(["align", "distribute"]).describe("Alignment or distribution operation"),
+      alignment: z.enum(["left", "center", "right", "top", "middle", "bottom"]).optional().describe("Alignment type (for align operation)"),
+      distribution: z.enum(["horizontal", "vertical"]).optional().describe("Distribution type (for distribute operation)"),
+      use_page_bounds: z.boolean().default(false).describe("Align/distribute relative to page bounds instead of selection bounds")
     },
     async (args) => {
       const operation = args.operation;

@@ -3,6 +3,7 @@
  * Batch 5: Special characters, layers, tables, status
  */
 
+import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
@@ -15,29 +16,15 @@ export async function registerSpecialTools(server: McpServer): Promise<void> {
   // Register insert_special_character tool
   server.tool(
     "insert_special_character",
-    "Insert special characters like page numbers, em dashes, etc.",
     {
-      character_type: {
-        type: "string",
-        enum: [
-          "auto_page_number", "next_page_number", "previous_page_number",
-          "em_dash", "en_dash", "copyright", "registered", "trademark",
-          "section_symbol", "paragraph_symbol", "bullet", "ellipsis",
-          "forced_line_break", "column_break", "frame_break", "page_break"
-        ],
-        description: "Type of special character to insert"
-      },
-      position: {
-        type: "string",
-        enum: ["cursor", "end", "start"],
-        description: "Where to insert",
-        default: "end"
-      },
-      story_index: {
-        type: "integer",
-        description: "Story index (0-based)",
-        default: 0
-      }
+      character_type: z.enum([
+        "auto_page_number", "next_page_number", "previous_page_number",
+        "em_dash", "en_dash", "copyright", "registered", "trademark",
+        "section_symbol", "paragraph_symbol", "bullet", "ellipsis",
+        "forced_line_break", "column_break", "frame_break", "page_break"
+      ]).describe("Type of special character to insert"),
+      position: z.enum(["cursor", "end", "start"]).default("end").describe("Where to insert"),
+      story_index: z.number().int().default(0).describe("Story index (0-based)")
     },
     async (args) => {
       return await handleInsertSpecialCharacter(args);
@@ -47,27 +34,11 @@ export async function registerSpecialTools(server: McpServer): Promise<void> {
   // Register manage_layers tool
   server.tool(
     "manage_layers",
-    "Create, delete, or modify layers",
     {
-      action: {
-        type: "string",
-        enum: ["create", "delete", "rename", "list"],
-        description: "Action to perform"
-      },
-      layer_name: {
-        type: "string",
-        description: "Layer name"
-      },
-      new_name: {
-        type: "string",
-        description: "New name for rename action",
-        default: ""
-      },
-      layer_color: {
-        type: "string",
-        description: "Layer color",
-        default: "Light Blue"
-      }
+      action: z.enum(["create", "delete", "rename", "list"]).describe("Action to perform"),
+      layer_name: z.string().describe("Layer name").optional(),
+      new_name: z.string().default("").describe("New name for rename action"),
+      layer_color: z.string().default("Light Blue").describe("Layer color")
     },
     async (args) => {
       return await handleManageLayers(args);
@@ -77,32 +48,13 @@ export async function registerSpecialTools(server: McpServer): Promise<void> {
   // Register create_table tool
   server.tool(
     "create_table",
-    "Create a table with specified dimensions",
     {
-      rows: {
-        type: "integer",
-        description: "Number of rows"
-      },
-      columns: {
-        type: "integer",
-        description: "Number of columns"
-      },
-      x: {
-        type: "number",
-        description: "X position"
-      },
-      y: {
-        type: "number",
-        description: "Y position"
-      },
-      width: {
-        type: "number",
-        description: "Table width"
-      },
-      height: {
-        type: "number",
-        description: "Table height"
-      }
+      rows: z.number().int().describe("Number of rows"),
+      columns: z.number().int().describe("Number of columns"),
+      x: z.number().describe("X position"),
+      y: z.number().describe("Y position"),
+      width: z.number().describe("Table width"),
+      height: z.number().describe("Table height")
     },
     async (args) => {
       return await handleCreateTable(args);
@@ -112,7 +64,6 @@ export async function registerSpecialTools(server: McpServer): Promise<void> {
   // Register indesign_status tool
   server.tool(
     "indesign_status",
-    "Check InDesign application status and document information",
     {},
     async (args) => {
       return await handleInDesignStatus(args);
@@ -122,6 +73,10 @@ export async function registerSpecialTools(server: McpServer): Promise<void> {
 
 
 async function handleInsertSpecialCharacter(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.character_type) {
+    throw new Error("character_type parameter is required");
+  }
+  
   const characterType: SpecialCharacterType = args.character_type;
   const position: TextPosition = args.position || "end";
   const storyIndex = args.story_index || 0;
@@ -185,6 +140,10 @@ async function handleInsertSpecialCharacter(args: any): Promise<{ content: TextC
 }
 
 async function handleManageLayers(args: any): Promise<{ content: TextContent[] }> {
+  if (!args.action) {
+    throw new Error("action parameter is required");
+  }
+  
   const action: LayerAction = args.action;
   const layerName = args.layer_name ? escapeExtendScriptString(args.layer_name) : "";
   const newName = args.new_name ? escapeExtendScriptString(args.new_name) : "";
@@ -273,6 +232,25 @@ async function handleManageLayers(args: any): Promise<{ content: TextContent[] }
 }
 
 async function handleCreateTable(args: any): Promise<{ content: TextContent[] }> {
+  if (args.rows === undefined || args.rows === null) {
+    throw new Error("rows parameter is required");
+  }
+  if (args.columns === undefined || args.columns === null) {
+    throw new Error("columns parameter is required");
+  }
+  if (args.x === undefined || args.x === null) {
+    throw new Error("x parameter is required");
+  }
+  if (args.y === undefined || args.y === null) {
+    throw new Error("y parameter is required");
+  }
+  if (args.width === undefined || args.width === null) {
+    throw new Error("width parameter is required");
+  }
+  if (args.height === undefined || args.height === null) {
+    throw new Error("height parameter is required");
+  }
+  
   const rows = args.rows;
   const columns = args.columns;
   const x = args.x;
