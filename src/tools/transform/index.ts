@@ -237,7 +237,7 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
   server.tool(
     "align_distribute_objects",
     {
-      operation: z.enum(["align", "distribute"]).describe("Alignment or distribution operation"),
+      operation: z.enum(["align", "distribute"]).describe("Alignment or distribution operation. REQUIRES: Must have 2+ objects pre-selected in InDesign before calling this tool."),
       alignment: z.enum(["left", "center", "right", "top", "middle", "bottom"]).optional().describe("Alignment type (for align operation)"),
       distribution: z.enum(["horizontal", "vertical"]).optional().describe("Distribution type (for distribute operation)"),
       use_page_bounds: z.boolean().default(false).describe("Align/distribute relative to page bounds instead of selection bounds")
@@ -259,7 +259,7 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
         }
         
         if (app.selection.length < 2) {
-          throw new Error("Please select at least 2 objects to align or distribute.");
+          throw new Error("SELECTION REQUIRED: Please manually select 2 or more objects in InDesign before using align/distribute tools. Currently " + app.selection.length + " objects selected.");
         }
         
         try {
@@ -271,7 +271,7 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
           }
           
           if (objects.length < 2) {
-            throw new Error("Need at least 2 transformable objects selected.");
+            throw new Error("SELECTION REQUIRED: Need at least 2 transformable objects (with geometricBounds) selected. Found " + objects.length + " transformable objects out of " + app.selection.length + " selected.");
           }
           
           var referenceBounds;

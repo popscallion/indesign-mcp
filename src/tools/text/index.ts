@@ -75,31 +75,14 @@ export async function registerTextTools(server: McpServer): Promise<void> {
   // Register update_text tool
   server.tool(
     "update_text",
-    "Update existing text in an InDesign document",
     {
-      find_text: {
-        type: "string",
-        description: "Text to find and replace"
-      },
-      replace_text: {
-        type: "string", 
-        description: "Text to replace with"
-      },
-      all_occurrences: {
-        type: "boolean",
-        description: "Replace all occurrences or just the first",
-        default: false
-      }
+      findText: z.string().describe("Text to find and replace"),
+      replaceText: z.string().describe("Text to replace with"),
+      all_occurrences: z.boolean().default(false).describe("Replace all occurrences or just the first")
     },
     async (args) => {
-      if (!args.find_text) {
-        throw new Error("find_text parameter is required");
-      }
-      if (!args.replace_text && args.replace_text !== "") {
-        throw new Error("replace_text parameter is required");
-      }
-      const findText = escapeExtendScriptString(args.find_text);
-      const replaceText = escapeExtendScriptString(args.replace_text);
+      const findText = escapeExtendScriptString(args.findText);
+      const replaceText = escapeExtendScriptString(args.replaceText);
       const allOccurrences = args.all_occurrences || false;
       
       const script = `
@@ -118,7 +101,7 @@ export async function registerTextTools(server: McpServer): Promise<void> {
         app.findGrepPreferences.findWhat = "${findText}";
         app.changeGrepPreferences.changeTo = "${replaceText}";
         
-        var found = doc.changeGrep(${allOccurrences});
+        var found = doc.changeGrep(${allOccurrences ? "true" : "false"});
         
         app.findGrepPreferences = NothingEnum.nothing;
         app.changeGrepPreferences = NothingEnum.nothing;
@@ -149,23 +132,12 @@ export async function registerTextTools(server: McpServer): Promise<void> {
   // Register remove_text tool
   server.tool(
     "remove_text",
-    "Remove text from an InDesign document",
     {
-      text: {
-        type: "string",
-        description: "Text to remove from the document"
-      },
-      all_occurrences: {
-        type: "boolean",
-        description: "Remove all occurrences or just the first",
-        default: false
-      }
+      text: z.string().describe("Text to remove from the document"),
+      all_occurrences: z.boolean().default(false).describe("Remove all occurrences or just the first")
     },
     async (args) => {
-      if (!args.text) {
-        throw new Error("text parameter is required");
-      }
-      const text = escapeExtendScriptString(args.text);
+      const textToRemove = escapeExtendScriptString(args.text);
       const allOccurrences = args.all_occurrences || false;
       
       const script = `
@@ -181,10 +153,10 @@ export async function registerTextTools(server: McpServer): Promise<void> {
         app.findGrepPreferences = NothingEnum.nothing;
         app.changeGrepPreferences = NothingEnum.nothing;
         
-        app.findGrepPreferences.findWhat = "${text}";
+        app.findGrepPreferences.findWhat = "${textToRemove}";
         app.changeGrepPreferences.changeTo = "";
         
-        var found = doc.changeGrep(${allOccurrences});
+        var found = doc.changeGrep(${allOccurrences ? "true" : "false"});
         
         app.findGrepPreferences = NothingEnum.nothing;
         app.changeGrepPreferences = NothingEnum.nothing;
@@ -215,9 +187,8 @@ export async function registerTextTools(server: McpServer): Promise<void> {
   // Register get_document_text tool
   server.tool(
     "get_document_text",
-    "Get all text content from the active InDesign document",
     {},
-    async (args) => {
+    async () => {
       const script = `
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
