@@ -9,6 +9,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAllInDesignTools } from "./tools/index.js";
+import { registerStrategicPrompts } from "./prompts/index.js";
 
 /**
  * Server configuration and identity
@@ -31,12 +32,16 @@ async function createInDesignMcpServer(): Promise<McpServer> {
       capabilities: {
         logging: {},
         tools: { listChanged: true },
+        prompts: { listChanged: true },
       },
     }
   );
 
   // Register all InDesign tools
   await registerAllInDesignTools(server);
+  
+  // Register strategic prompts for intelligent workflow guidance
+  await registerStrategicPrompts(server);
   
   return server;
 }

@@ -219,3 +219,30 @@ export interface ObjectSelection {
   layer?: string;
   page?: number;
 }
+
+/**
+ * Strategic prompt response structure
+ */
+export interface PromptResult {
+  strategy: string;
+  metadata?: {
+    promptType: string;
+    version: string;
+    applicableContext: string[];
+  };
+}
+
+/**
+ * Document workflow context for strategic guidance
+ */
+export interface WorkflowContext {
+  documentType?: "magazine" | "report" | "brochure" | "book" | "newsletter";
+  currentOperation?: string;
+  documentState?: {
+    pageCount: number;
+    hasOversetText: boolean;
+    textFrameCount: number;
+    threadingIntegrity: boolean;
+  };
+  userExperience?: "beginner" | "intermediate" | "advanced";
+}
