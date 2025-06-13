@@ -7,6 +7,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { markInDesignStatusChecked } from "../layout/index.js";
 import type { SpecialCharacterType, LayerAction, LayerColor, TextPosition } from "../../types.js";
 
 /**
@@ -313,10 +314,25 @@ async function handleInDesignStatus(args: any): Promise<{ content: TextContent[]
   
   const result = await executeExtendScript(script);
   
+  // Mark status check as completed for workflow tracking
+  if (result.success) {
+    markInDesignStatusChecked();
+  }
+  
   return {
     content: [{
       type: "text",
-      text: result.success ? result.result! : `Error checking InDesign status: ${result.error}`
+      text: result.success ? 
+        `${result.result}
+
+📋 WORKFLOW CONTEXT: InDesign status verified. Layout tools now know application state is valid.
+💡 NEXT STEPS: Check page dimensions with get_page_dimensions() or document content with get_document_text().` :
+        `❌ Error checking InDesign status: ${result.error}
+
+💡 TROUBLESHOOTING:
+• Ensure Adobe InDesign is running
+• Check InDesign is not busy with other operations
+• Verify system has sufficient resources`
     }]
   };
 }

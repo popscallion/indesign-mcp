@@ -6,6 +6,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { ExportFormat, ExportQuality, ImportOptions } from "../../types.js";
+import { updatePageDimensionsCache } from "../layout/index.js";
 import { z } from "zod";
 
 /**
@@ -353,57 +354,59 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       const pageNumber = args.page_number || 1;
 
       const script = `
-        if (app.documents.length === 0) {
-          throw new Error("No documents are open in InDesign. Please open a document first.");
-        }
-        
-        var doc = app.activeDocument;
-        if (!doc) {
-          throw new Error("No active document found.");
-        }
-        
-        try {
-          var page = doc.pages[0];
-          var bounds = page.bounds;
-          var width = bounds[3] - bounds[1];
-          var height = bounds[2] - bounds[0];
-          
-          // Get the document's measurement unit - no conversion needed as bounds are already in doc units
-          var unit = "mm"; // If InDesign is set to mm, bounds should already be in mm
-          
-          try {
-            var appUnits = app.viewPreferences.horizontalMeasurementUnits;
-            if (appUnits == MeasurementUnits.MILLIMETERS) {
-              unit = "mm";
-            } else if (appUnits == MeasurementUnits.INCHES || appUnits == MeasurementUnits.INCHES_DECIMAL) {
-              unit = "in";
-            } else if (appUnits == MeasurementUnits.CENTIMETERS) {
-              unit = "cm";
-            } else if (appUnits == MeasurementUnits.PICAS) {
-              unit = "p";
-            } else if (appUnits == MeasurementUnits.POINTS) {
-              unit = "pts";
-            } else {
-              unit = "units"; // Unknown unit
-            }
-          } catch(e) {
-            unit = "error";
+        (function () {
+          if (app.documents.length === 0) {
+            return "ERROR: No open document";
           }
           
-          "Page 1: " + width + " x " + height + " " + unit + " (detected: " + appUnits + ")";
-        } catch (e) {
-          throw new Error("Get page dimensions failed: " + e.message);
-        }
+          var oldUnit = app.scriptPreferences.measurementUnit;
+          try {
+            app.scriptPreferences.measurementUnit = MeasurementUnits.POINTS;
+            
+            var p = app.activeDocument.pages[0];
+            var b = p.bounds;               // UnitValues
+            var w = Number(b[3] - b[1]);    // Number in pt
+            var h = Number(b[2] - b[0]);
+            
+            // Always return explicitly
+            return "Page 1: " + w + " × " + h + " pt";
+          }
+          catch (e) {
+            // Return the message so the bridge can forward it
+            return "ERROR: " + e.message;
+          }
+          finally {
+            app.scriptPreferences.measurementUnit = oldUnit;
+          }
+        })();
       `;
 
       const result = await executeExtendScript(script);
+
+      if (result.success && result.result) {
+        // Parse dimensions from result and update cache for layout tools
+        const dimensionMatch = result.result.match(/(\d+(?:\.\d+)?)\s*×\s*(\d+(?:\.\d+)?)\s*pt/);
+        if (dimensionMatch) {
+          const width = parseFloat(dimensionMatch[1]);
+          const height = parseFloat(dimensionMatch[2]);
+          updatePageDimensionsCache(width, height);
+        }
+      }
 
       return {
         content: [{
           type: "text",
           text: result.success ? 
-            `Page dimensions: ${result.result || "No result"}` :
-            `Get page dimensions failed: ${result.error}`
+            `📐 ${result.result || "No result"}
+
+📋 WORKFLOW CONTEXT: Page dimensions checked. Layout tools now have spatial context.
+💡 NEXT STEPS: Use create_textframe() or position_textframe() with confidence in spatial constraints.` :
+            `❌ Get page dimensions failed: ${result.error}
+
+💡 TROUBLESHOOTING:
+• Ensure InDesign is running with indesign_status
+• Verify a document is open
+• Check document has at least one page`
         }]
       };
     }
