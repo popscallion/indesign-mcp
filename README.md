@@ -4,13 +4,13 @@ An experimental MCP (Model Context Protocol) server for Adobe InDesign automatio
 
 ## Features
 
-Currently implements 34 tools across 8 categories:
+Currently implements 35 tools across 8 categories:
 
 - **Text Operations** (4): Add, update, remove, and extract text content
 - **Style Management** (7): Create and apply paragraph/character styles, text selection
 - **Layout Control** (2): Position and create text frames with enhanced workflow guidance
 - **Page Management** (3): Add, remove, inspect pages, get dimensions  
-- **Document Operations** (5): Export, save, import content, place files
+- **Document Operations** (6): Export, save, import content, place files, preview generation
 - **Object Transformation** (3): Transform, duplicate, and align objects
 - **Special Features** (4): Insert characters, manage layers, create tables, status
 - **Threading/Flow Tools** (6): Text threading, overset resolution, flow management, frame bounds inspection, property copying

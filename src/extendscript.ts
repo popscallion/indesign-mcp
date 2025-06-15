@@ -45,6 +45,8 @@ export async function executeExtendScript(
     writeFileSync(scriptPath, script, "utf8");
     
     // Try each InDesign application name
+    let lastError: string | undefined;
+    
     for (const appName of INDESIGN_APP_NAMES) {
       try {
         const result = await executeAppleScript(appName, scriptPath, timeout);
@@ -52,15 +54,24 @@ export async function executeExtendScript(
         if (result.success) {
           return result;
         }
+        
+        // If we got a real ExtendScript error, return it immediately
+        if (result.error?.startsWith("ExtendScript error")) {
+          return result;
+        }
+        
+        // Could be "application not running" → try next name
+        lastError = result.error;
       } catch (error) {
         // Continue to next app name
+        lastError = error instanceof Error ? error.message : String(error);
         continue;
       }
     }
     
     return {
       success: false,
-      error: "Could not find or connect to any InDesign application. Please ensure InDesign is running."
+      error: lastError ?? "Could not find or connect to any InDesign application. Please ensure InDesign is running."
     };
     
   } catch (error) {
@@ -94,7 +105,7 @@ function executeAppleScript(
   timeout: number
 ): Promise<ExtendScriptResult> {
   return new Promise((resolve, reject) => {
-    const appleScript = `tell application "${appName}" to do script alias POSIX file "${scriptPath}" language javascript`;
+    const appleScript = `try\n  tell application "${appName}"\n    set _r to do script alias POSIX file "${scriptPath}" language javascript\n  end tell\n  return _r\non error errText number errNum\n  return "ERROR|" & errNum & "|" & errText\nend try`;
     
     const process = spawn("osascript", ["-e", appleScript], {
       timeout,
@@ -113,15 +124,25 @@ function executeAppleScript(
     });
     
     process.on("close", (code) => {
-      if (code === 0) {
-        resolve({
-          success: true,
-          result: stdout.trim()
-        });
-      } else {
+      const combined = (stdout + stderr).trim();           // ❶ merge streams
+      
+      // Parse ExtendScript errors from AppleScript (more robust detection)
+      const m = combined.match(/^ERROR\|(-?\d+)\|(.*)$/s); // �② detect real error
+      if (m) {
         resolve({
           success: false,
-          error: stderr.trim() || `Process exited with code ${code}`
+          error: `ExtendScript error ${m[1]}: ${m[2]}`
+        });
+        return;                                            // ❸ stop here
+      }
+      
+      if (code === 0) {
+        resolve({ success: true, result: combined });
+      } else {
+        // Expose raw osascript error per O3's suggestion
+        resolve({
+          success: false,
+          error: combined || `osascript exit ${code}`
         });
       }
     });

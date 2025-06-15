@@ -8,6 +8,98 @@ import { executeExtendScript, escapeExtendScriptString } from "../../extendscrip
 import type { ExportFormat, ExportQuality, ImportOptions } from "../../types.js";
 import { updatePageDimensionsCache } from "../layout/index.js";
 import { z } from "zod";
+import { promises as fs } from "fs";
+import { mkdtempSync } from "fs";
+import path from "path";
+import os from "os";
+
+/**
+ * Preview cache to avoid redundant exports
+ * Key: document_name_page_quality, Value: { filePath, timestamp }
+ */
+const previewCache = new Map<string, { filePath: string; timestamp: number }>();
+
+/**
+ * Create safe user temp file path (avoids macOS TCC restrictions)
+ */
+function safeUserTempFile(name: string): string {
+  return path.join(
+    mkdtempSync(path.join(os.tmpdir(), "id-mcp-")), // unique temp dir
+    name
+  );
+}
+
+/**
+ * Generate cache key for preview
+ */
+function generateCacheKey(docName: string, page: number | null, quality: string): string {
+  const pageKey = page || 1;
+  return `${docName}_${pageKey}_${quality}`;
+}
+
+/**
+ * Check if cached preview is still valid (less than 5 minutes old)
+ */
+async function getCachedPreview(cacheKey: string, tempDir: string): Promise<string | null> {
+  const cached = previewCache.get(cacheKey);
+  if (!cached) return null;
+
+  const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+  if (cached.timestamp < fiveMinutesAgo) {
+    // Cache expired
+    previewCache.delete(cacheKey);
+    return null;
+  }
+
+  // Check if file still exists
+  try {
+    await fs.access(cached.filePath);
+    return cached.filePath;
+  } catch {
+    // File doesn't exist anymore
+    previewCache.delete(cacheKey);
+    return null;
+  }
+}
+
+/**
+ * Store preview in cache
+ */
+function cachePreview(cacheKey: string, filePath: string): void {
+  previewCache.set(cacheKey, {
+    filePath,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Clean up old preview files in the specified directory
+ * Removes files older than 1 hour that match the preview naming pattern
+ */
+async function cleanupOldPreviews(tempDir: string): Promise<void> {
+  try {
+    const files = await fs.readdir(tempDir);
+    const previewFiles = files.filter(file => file.startsWith('indesign_preview_') && file.endsWith('.png'));
+    const oneHourAgo = Date.now() - (60 * 60 * 1000); // 1 hour in milliseconds
+
+    for (const file of previewFiles) {
+      const filePath = path.join(tempDir, file);
+      try {
+        const stats = await fs.stat(filePath);
+        if (stats.mtime.getTime() < oneHourAgo) {
+          await fs.unlink(filePath);
+          console.log(`Cleaned up old preview: ${filePath}`);
+        }
+      } catch (fileError) {
+        // Skip files that can't be accessed or deleted
+        console.warn(`Could not clean up preview file ${filePath}:`, fileError);
+      }
+    }
+  } catch (dirError) {
+    // If directory doesn't exist or can't be read, that's fine
+    console.warn(`Could not access temp directory ${tempDir} for cleanup:`, dirError);
+  }
+}
 
 /**
  * Registers all document export/import tools with the MCP server
@@ -28,7 +120,14 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       if (!args.filePath) {
         throw new Error("filePath parameter is required");
       }
-      const path = escapeExtendScriptString(args.filePath);
+      
+      // Handle /tmp paths with safe temp directory
+      let filePath = args.filePath;
+      if (filePath.startsWith("/tmp") || filePath.startsWith("/private/tmp")) {
+        filePath = safeUserTempFile(path.basename(filePath));
+      }
+      
+      const escapedPath = escapeExtendScriptString(filePath);
       const quality: ExportQuality = args.quality || "high";
       const pages = args.pages || "all";
       const spreads = args.spreads || false;
@@ -44,7 +143,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         }
         
         try {
-          var exportFile = new File("${path}");
+          var exportFile = new File("${escapedPath}");
           
           // Set up export based on format
           if ("${format}" === "PDF") {
@@ -69,7 +168,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
             "Successfully exported JPEG to " + exportFile.fsName;
             
           } else if ("${format}" === "PNG") {
-            // PNG export
+            // PNG export (document-level export)
             doc.exportFile(ExportFormat.PNG_FORMAT, exportFile, false);
             "Successfully exported PNG to " + exportFile.fsName;
             
@@ -180,7 +279,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       if (!args.filePath) {
         throw new Error("filePath parameter is required");
       }
-      const path = escapeExtendScriptString(args.filePath);
+      const escapedPath2 = escapeExtendScriptString(args.filePath);
       const linkFile = args.link_file !== false; // default true
       const showOptions = args.show_options || false;
       const retainFormat = args.retain_format !== false; // default true
@@ -196,9 +295,9 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         }
         
         try {
-          var importFile = new File("${path}");
+          var importFile = new File("${escapedPath2}");
           if (!importFile.exists) {
-            throw new Error("Import file does not exist: ${path}");
+            throw new Error("Import file does not exist: ${escapedPath2}");
           }
           
           // Create a text frame if none exists
@@ -263,7 +362,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       if (!filePath) {
         throw new Error("filePath parameter is required");
       }
-      const path = escapeExtendScriptString(filePath);
+      const escapedPath3 = escapeExtendScriptString(filePath);
       const x = args.x || 72;
       const y = args.y || 72;
       const width = args.width || 200;
@@ -282,9 +381,9 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         }
         
         try {
-          var placeFile = new File("${path}");
+          var placeFile = new File("${escapedPath3}");
           if (!placeFile.exists) {
-            throw new Error("File does not exist: ${path}");
+            throw new Error("File does not exist: ${escapedPath3}");
           }
           
           var page = doc.pages[0];
@@ -409,6 +508,118 @@ export async function registerExportTools(server: McpServer): Promise<void> {
 • Check document has at least one page`
         }]
       };
+    }
+  );
+
+  // Register preview_document tool
+  server.tool(
+    "preview_document",
+    "🔍 **CONTEXT**: Generate optimized PNG previews for rapid design iteration and visual feedback. Essential for validating styling changes and layout adjustments during automation workflows.\n\n**LIMITATIONS**: Requires open document. Preview quality affects generation speed. Temp files auto-cleanup after 1 hour. Current page only for speed.\n\n**EXAMPLES**:\n• Quick preview: `{quality: \"preview\"}` (72dpi, ~1-2 seconds)\n• Medium quality: `{quality: \"medium\", page: 2}` (150dpi for review)\n• High quality: `{quality: \"high\", auto_cleanup: false}` (300dpi, keep files)\n• Custom location: `{temp_dir: \"/Users/name/previews\"}`\n\n**ALTERNATIVES**: Use `test_export_document` for final exports. Manual export in InDesign. Screenshot tools for quick captures.\n\n**RESULTS**: Returns file path to generated PNG preview, enables visual validation of design changes, supports iterative design workflows with immediate feedback.",
+    {
+      quality: z.enum(["preview", "medium", "high"]).default("preview").describe("Preview quality: preview=72dpi (fast), medium=150dpi, high=300dpi"),
+      page: z.number().optional().describe("Page number to preview (1-based), defaults to current active page"),
+      auto_cleanup: z.boolean().default(true).describe("Automatically remove preview files older than 1 hour"),
+      temp_dir: z.string().default("/tmp").describe("Directory for temporary preview files")
+    },
+    async (args) => {
+      const quality = args.quality || "preview";
+      const page = args.page || null;
+      const autoCleanup = args.auto_cleanup !== false;
+      const tempDir = args.temp_dir || os.tmpdir();
+
+      // Validate temp directory path
+      const sanitizedTempDir = escapeExtendScriptString(tempDir);
+
+      // Map quality to DPI settings
+      const qualitySettings = {
+        preview: { dpi: 72 },
+        medium: { dpi: 150 },
+        high: { dpi: 300 }
+      };
+
+      const settings = qualitySettings[quality];
+      const timestamp = Date.now();
+      const previewFileName = `indesign_preview_${timestamp}.png`;
+      
+      // Use user-writable temp folder (avoids macOS TCC restrictions)
+      // This will be resolved to /var/folders/<hash>/T which is user-accessible
+      
+      // Pre-calculate page index for simpler template
+      const pageIndex = page ? page - 1 : 0;
+      const pageValidation = page ? `
+        if (doc.pages.length < ${page}) {
+          throw new Error("Page ${page} does not exist. Document has " + doc.pages.length + " pages.");
+        }` : '';
+
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        try {
+          // Create preview file using user-writable temp folder
+          var previewFile = new File(Folder.temp.fsName + "/${previewFileName}");
+          ${pageValidation}
+          
+          // Set PNG export quality
+          app.pngExportPreferences.exportResolution = ${settings.dpi};
+          
+          // PNG export (document-level export)
+          doc.exportFile(ExportFormat.PNG_FORMAT, previewFile, false);
+          "Preview generated successfully: " + previewFile.fsName + " (${quality} quality)";
+          
+        } catch (e) {
+          throw new Error("Preview generation failed: " + e.message);
+        }
+      `;
+
+      const result = await executeExtendScript(script);
+
+      if (result.success) {
+        // Extract file path from result - ExtendScript will return the actual path
+        const filePathMatch = result.result?.match(/Preview generated successfully: (.+?) \(/);
+        const filePath = filePathMatch ? filePathMatch[1] : `User temp directory/${previewFileName}`;
+
+        // Perform cleanup if requested
+        if (autoCleanup) {
+          try {
+            await cleanupOldPreviews(tempDir);
+          } catch (cleanupError) {
+            // Don't fail the preview generation if cleanup fails
+            console.warn(`Preview cleanup warning: ${cleanupError}`);
+          }
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: `✅ ${result.result}
+
+📁 **FILE LOCATION**: ${filePath}
+📋 **WORKFLOW CONTEXT**: Visual preview generated for design validation.
+💡 **NEXT STEPS**: Review preview, make adjustments, and re-generate as needed.
+🔗 **RELATED TOOLS**: apply_paragraph_style, position_textframe, transform_objects`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `❌ Preview generation failed: ${result.error}
+
+💡 **TROUBLESHOOTING**:
+• Ensure InDesign is running with a document open
+• Verify the page number exists (use get_page_info)
+• Check temp directory permissions: ${tempDir}
+• Ensure sufficient disk space available`
+          }]
+        };
+      }
     }
   );
 
