@@ -9,32 +9,36 @@ import type { ExportFormat, ExportQuality, ImportOptions } from "../../types.js"
 import { updatePageDimensionsCache } from "../layout/index.js";
 import { z } from "zod";
 import { promises as fs } from "fs";
-import { mkdtempSync } from "fs";
+import { mkdtempSync, mkdirSync } from "fs";
 import path from "path";
 import os from "os";
 
 /**
  * Preview cache to avoid redundant exports
- * Key: document_name_page_quality, Value: { filePath, timestamp }
+ * Key: document_name_page_quality_dpi, Value: { filePath, timestamp }
  */
 const previewCache = new Map<string, { filePath: string; timestamp: number }>();
+
+/**
+ * Reusable temp directory for the session based on process ID
+ * This persists across module reloads during the server lifetime
+ */
+const baseTmpDir = path.join(os.tmpdir(), `id-mcp-${process.pid}`);
+mkdirSync(baseTmpDir, { recursive: true });
 
 /**
  * Create safe user temp file path (avoids macOS TCC restrictions)
  */
 function safeUserTempFile(name: string): string {
-  return path.join(
-    mkdtempSync(path.join(os.tmpdir(), "id-mcp-")), // unique temp dir
-    name
-  );
+  return path.join(baseTmpDir, name);
 }
 
 /**
- * Generate cache key for preview
+ * Generate cache key for preview (includes DPI for quality-specific caching)
  */
-function generateCacheKey(docName: string, page: number | null, quality: string): string {
+function generateCacheKey(docName: string, page: number | null, quality: string, dpi: number): string {
   const pageKey = page || 1;
-  return `${docName}_${pageKey}_${quality}`;
+  return `${docName}_${pageKey}_${quality}_${dpi}`;
 }
 
 /**
@@ -78,12 +82,16 @@ function cachePreview(cacheKey: string, filePath: string): void {
  */
 async function cleanupOldPreviews(tempDir: string): Promise<void> {
   try {
-    const files = await fs.readdir(tempDir);
-    const previewFiles = files.filter(file => file.startsWith('indesign_preview_') && file.endsWith('.png'));
+    const files = await fs.readdir(tempDir, { withFileTypes: true });
+    const previewFiles = files.filter(
+      dirent => dirent.isFile() && 
+      dirent.name.startsWith('indesign_preview_') && 
+      dirent.name.endsWith('.png')
+    );
     const oneHourAgo = Date.now() - (60 * 60 * 1000); // 1 hour in milliseconds
 
     for (const file of previewFiles) {
-      const filePath = path.join(tempDir, file);
+      const filePath = path.join(tempDir, file.name);
       try {
         const stats = await fs.stat(filePath);
         if (stats.mtime.getTime() < oneHourAgo) {
@@ -588,7 +596,8 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         // Perform cleanup if requested
         if (autoCleanup) {
           try {
-            await cleanupOldPreviews(tempDir);
+            // Always use the persistent session directory for cleanup
+            await cleanupOldPreviews(baseTmpDir);
           } catch (cleanupError) {
             // Don't fail the preview generation if cleanup fails
             console.warn(`Preview cleanup warning: ${cleanupError}`);
