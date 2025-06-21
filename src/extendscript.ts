@@ -84,7 +84,7 @@ export async function executeExtendScript(
     if (scriptPath) {
       try {
         unlinkSync(scriptPath);
-      } catch (error) {
+      } catch {
         // Ignore cleanup errors
       }
     }
@@ -124,16 +124,16 @@ function executeAppleScript(
     });
     
     process.on("close", (code) => {
-      const combined = (stdout + stderr).trim();           // ❶ merge streams
+      const combined = (stdout + stderr).trim();           // merge stdout & stderr streams
       
       // Parse ExtendScript errors from AppleScript (more robust detection)
-      const m = combined.match(/^ERROR\|(-?\d+)\|(.*)$/s); // �② detect real error
+      const m = combined.match(/^ERROR\|(-?\d+)\|(.*)$/s); // detect real ExtendScript error pattern
       if (m) {
         resolve({
           success: false,
           error: `ExtendScript error ${m[1]}: ${m[2]}`
         });
-        return;                                            // ❸ stop here
+        return;                                            // stop after handling ExtendScript error
       }
       
       if (code === 0) {

@@ -9,6 +9,7 @@ import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import { z } from "zod";
 import { toPoints } from "../../utils/coords.js";
+import { withChangeTracking } from "../../utils/changeSummary.js";
 
 /**
  * Document state cache for prerequisite tracking
@@ -20,7 +21,7 @@ interface DocumentStateCache {
   workflowStepsCompleted: Set<string>;
 }
 
-let documentState: DocumentStateCache = {
+const documentState: DocumentStateCache = {
   lastPageDimensionsCheck: null,
   lastTextFrameInfo: null,
   knownPageDimensions: null,
@@ -51,9 +52,9 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
       width: z.number().default(-1).describe("Width in points (optional). 📋 See document_creation_strategy → Layout Operations for complete workflow"),
       height: z.number().default(-1).describe("Height in points (optional)")
     },
-    async (args) => {
+    withChangeTracking(server, "position_textframe")(async (args: any) => {
       return await handlePositionTextFrame(args);
-    }
+    })
   );
 
   // Register create_textframe tool with strategic guidance
@@ -68,9 +69,9 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
       page_number: z.number().default(1).describe("Page number (1-based). 📋 Verify with get_page_info() first"),
       text_content: z.string().default("").describe("Initial text content")
     },
-    async (args) => {
+    withChangeTracking(server, "create_textframe")(async (args: any) => {
       return await handleCreateTextFrame(args);
-    }
+    })
   );
 }
 
@@ -204,10 +205,10 @@ async function handlePositionTextFrame(args: any): Promise<{ content: TextConten
   }
   
   const textFrameIndex = args.textframe_index || 0;
-  const x = args.x;
-  const y = args.y;
-  const width = args.width || -1;
-  const height = args.height || -1;
+  const _x = args.x;
+  const _y = args.y;
+  const _width = args.width || -1;
+  const _height = args.height || -1;
   
   const pageDims = documentState.knownPageDimensions;
   const pageWidth = pageDims ? pageDims.width : 612;

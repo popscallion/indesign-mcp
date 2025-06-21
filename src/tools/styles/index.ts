@@ -106,7 +106,7 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
 
 
 // Handler implementations
-async function handleListParagraphStyles(args: any): Promise<{ content: TextContent[] }> {
+async function handleListParagraphStyles(_args: any): Promise<{ content: TextContent[] }> {
   const script = `
     if (app.documents.length === 0) {
       throw new Error("No documents are open in InDesign.");
@@ -376,7 +376,7 @@ async function handleSelectTextRange(args: any): Promise<{ content: TextContent[
   };
 }
 
-async function handleListCharacterStyles(args: any): Promise<{ content: TextContent[] }> {
+async function handleListCharacterStyles(_args: any): Promise<{ content: TextContent[] }> {
   const script = `
     if (app.documents.length === 0) {
       throw new Error("No documents are open in InDesign.");

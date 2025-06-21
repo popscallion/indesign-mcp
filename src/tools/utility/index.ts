@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { executeExtendScript } from "../../extendscript.js";
 import type { FrameScope, TextFlowAction } from "../../types.js";
 
 /**
@@ -205,24 +205,285 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
         if (app.documents.length === 0) { throw new Error('No active document'); }
         var doc = app.activeDocument;
         var issues = [];
+        var warnings = [];
+        
         // Overset check
         for (var i=0;i<doc.stories.length;i++){
-          if(doc.stories[i].overflows) issues.push({ type:'overset_text', story:i });
+          if(doc.stories[i].overflows) {
+            issues.push({ 
+              type:'overset_text', 
+              story:i, 
+              severity: 'error',
+              message: 'Story ' + i + ' has overset text that may be lost'
+            });
+          }
         }
+        
         // Empty frame check
         for (var p=0;p<doc.pages.length;p++){
           var page = doc.pages[p];
           for(var f=0;f<page.textFrames.length;f++){
             var tf = page.textFrames[f];
-            if(tf.contents.length===0) issues.push({ type:'empty_frame', page:p+1, frame:f });
+            if(tf.contents.length===0) {
+              warnings.push({ 
+                type:'empty_frame', 
+                page:p+1, 
+                frame:f,
+                severity: 'warning',
+                message: 'Text frame ' + f + ' on page ' + (p+1) + ' is empty'
+              });
+            }
           }
         }
-        var passed = issues.length === 0;
-        JSON.stringify({ passed: passed, issues: issues });
+        
+        // Check for unthreaded frames with overflow potential
+        for (var p=0;p<doc.pages.length;p++){
+          var page = doc.pages[p];
+          for(var f=0;f<page.textFrames.length;f++){
+            var tf = page.textFrames[f];
+            if(tf.contents.length > 0 && !tf.nextTextFrame && tf.overflows) {
+              issues.push({
+                type: 'unthreaded_overflow',
+                page: p+1,
+                frame: f,
+                severity: 'error',
+                message: 'Frame ' + f + ' on page ' + (p+1) + ' has overflow but no threading'
+              });
+            }
+          }
+        }
+        
+        var allIssues = issues.concat(warnings);
+        var passed = issues.length === 0; // Only errors affect pass/fail
+        JSON.stringify({ 
+          passed: passed, 
+          issues: allIssues,
+          errorCount: issues.length,
+          warningCount: warnings.length
+        });
       `;
       const r = await executeExtendScript(jsx);
       if(!r.success) return { content:[{ type:"text", text:`Error: ${r.error}` }] };
+      
+      // Parse validation result and convert to changeSummary patches
+      const validation = JSON.parse(r.result!);
+      if (!validation.passed && validation.issues.length > 0) {
+        const patches = validation.issues.map((issue: any, index: number) => ({
+          op: "add",
+          path: `/validation/warnings/${index}`,
+          value: issue
+        }));
+        
+        // Log validation warnings as changeSummary patches
+        await (server as any).server.sendLoggingMessage({
+          level: "warning",
+          logger: "validation",
+          data: {
+            tool: "validate_layout",
+            patches: patches,
+            summary: `Found ${validation.issues.length} layout issues`,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+      
       return { content:[{ type:"text", text: r.result! }] };
+    }
+  );
+
+  // === scenario_summary =============================================
+  server.tool(
+    "scenario_summary",
+    {
+      include_validation: z.boolean().default(true).describe("Include layout validation in summary"),
+      include_content_stats: z.boolean().default(true).describe("Include content statistics"),
+      include_recommendations: z.boolean().default(true).describe("Include workflow recommendations")
+    },
+    async (args): Promise<{ content: TextContent[] }> => {
+      const includeValidation = args.include_validation !== false;
+      const includeContentStats = args.include_content_stats !== false;
+      const includeRecommendations = args.include_recommendations !== false;
+      
+      const jsx = `
+        if (app.documents.length === 0) { throw new Error('No active document'); }
+        var doc = app.activeDocument;
+        var summary = {
+          document: {
+            name: doc.name,
+            pages: doc.pages.length,
+            stories: doc.stories.length,
+            textFrames: doc.textFrames.length
+          },
+          validation: {
+            issues: [],
+            warnings: [],
+            passed: true
+          },
+          contentStats: {
+            totalCharacters: 0,
+            threaded: 0,
+            oversetStories: 0,
+            emptyFrames: 0
+          },
+          recommendations: []
+        };
+        
+        // Content statistics
+        if (${includeContentStats}) {
+          for (var i = 0; i < doc.stories.length; i++) {
+            var story = doc.stories[i];
+            summary.contentStats.totalCharacters += story.contents.length;
+            if (story.overflows) summary.contentStats.oversetStories++;
+          }
+          
+          for (var p = 0; p < doc.pages.length; p++) {
+            var page = doc.pages[p];
+            for (var f = 0; f < page.textFrames.length; f++) {
+              var tf = page.textFrames[f];
+              if (tf.contents.length === 0) summary.contentStats.emptyFrames++;
+              if (tf.nextTextFrame && tf.nextTextFrame.isValid) summary.contentStats.threaded++;
+            }
+          }
+        }
+        
+        // Validation
+        if (${includeValidation}) {
+          // Overset check
+          for (var i = 0; i < doc.stories.length; i++) {
+            if (doc.stories[i].overflows) {
+              summary.validation.issues.push({
+                type: 'overset_text',
+                story: i,
+                severity: 'error',
+                message: 'Story ' + i + ' has overset text'
+              });
+              summary.validation.passed = false;
+            }
+          }
+          
+          // Empty frames
+          for (var p = 0; p < doc.pages.length; p++) {
+            var page = doc.pages[p];
+            for (var f = 0; f < page.textFrames.length; f++) {
+              var tf = page.textFrames[f];
+              if (tf.contents.length === 0) {
+                summary.validation.warnings.push({
+                  type: 'empty_frame',
+                  page: p + 1,
+                  frame: f,
+                  severity: 'warning',
+                  message: 'Frame ' + f + ' on page ' + (p + 1) + ' is empty'
+                });
+              }
+            }
+          }
+          
+          // Unthreaded overflow
+          for (var p = 0; p < doc.pages.length; p++) {
+            var page = doc.pages[p];
+            for (var f = 0; f < page.textFrames.length; f++) {
+              var tf = page.textFrames[f];
+              if (tf.contents.length > 0 && !tf.nextTextFrame && tf.overflows) {
+                summary.validation.issues.push({
+                  type: 'unthreaded_overflow',
+                  page: p + 1,
+                  frame: f,
+                  severity: 'error',
+                  message: 'Frame has overflow but no threading'
+                });
+                summary.validation.passed = false;
+              }
+            }
+          }
+        }
+        
+        // Recommendations
+        if (${includeRecommendations}) {
+          if (summary.contentStats.oversetStories > 0) {
+            summary.recommendations.push('Use auto_flow_text or resolve_overset_text to handle overflow');
+          }
+          if (summary.contentStats.emptyFrames > 0) {
+            summary.recommendations.push('Consider removing empty frames or adding content');
+          }
+          if (summary.contentStats.threaded === 0 && doc.textFrames.length > 1) {
+            summary.recommendations.push('Consider threading text frames for better text flow');
+          }
+          if (doc.pages.length === 1 && summary.contentStats.oversetStories > 0) {
+            summary.recommendations.push('Add more pages to accommodate all content');
+          }
+        }
+        
+        JSON.stringify(summary);
+      `;
+      
+      const r = await executeExtendScript(jsx);
+      if(!r.success) return { content:[{ type:"text", text:`Error: ${r.error}` }] };
+      
+      const summary = JSON.parse(r.result!);
+      
+      // Log scenario summary as changeSummary patches
+      const summaryPatches = [
+        {
+          op: "replace",
+          path: "/scenario/summary",
+          value: summary
+        }
+      ];
+      
+      await (server as any).server.sendLoggingMessage({
+        level: "info",
+        logger: "scenario",
+        data: {
+          tool: "scenario_summary",
+          patches: summaryPatches,
+          summary: `Document: ${summary.document.pages} pages, ${summary.validation.issues.length} errors, ${summary.validation.warnings.length} warnings`,
+          timestamp: new Date().toISOString()
+        }
+      });
+      
+      // Format summary for display
+      let displayText = `📊 **SCENARIO SUMMARY**\n\n`;
+      displayText += `📄 **Document**: ${summary.document.name}\n`;
+      displayText += `📖 **Pages**: ${summary.document.pages} | **Stories**: ${summary.document.stories} | **Frames**: ${summary.document.textFrames}\n\n`;
+      
+      if (includeContentStats) {
+        displayText += `📝 **Content Stats**:\n`;
+        displayText += `• Characters: ${summary.contentStats.totalCharacters.toLocaleString()}\n`;
+        displayText += `• Threaded frames: ${summary.contentStats.threaded}\n`;
+        displayText += `• Overset stories: ${summary.contentStats.oversetStories}\n`;
+        displayText += `• Empty frames: ${summary.contentStats.emptyFrames}\n\n`;
+      }
+      
+      if (includeValidation) {
+        if (summary.validation.passed) {
+          displayText += `✅ **Validation**: All checks passed\n`;
+        } else {
+          displayText += `❌ **Validation**: ${summary.validation.issues.length} errors found\n`;
+          summary.validation.issues.forEach((issue: any) => {
+            displayText += `   • ${issue.message}\n`;
+          });
+        }
+        
+        if (summary.validation.warnings.length > 0) {
+          displayText += `⚠️  **Warnings**: ${summary.validation.warnings.length} warnings\n`;
+          summary.validation.warnings.slice(0, 3).forEach((warning: any) => {
+            displayText += `   • ${warning.message}\n`;
+          });
+          if (summary.validation.warnings.length > 3) {
+            displayText += `   • ... and ${summary.validation.warnings.length - 3} more\n`;
+          }
+        }
+        displayText += `\n`;
+      }
+      
+      if (includeRecommendations && summary.recommendations.length > 0) {
+        displayText += `💡 **Recommendations**:\n`;
+        summary.recommendations.forEach((rec: string) => {
+          displayText += `• ${rec}\n`;
+        });
+      }
+      
+      return { content:[{ type:"text", text: displayText }] };
     }
   );
 }
@@ -230,7 +491,6 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
 async function handleResolveOversetText(args: any): Promise<{ content: TextContent[] }> {
   const sourcePage = args.source_page || -1;
   const targetPages = JSON.stringify(args.target_pages || []);
-  const createFrames = args.create_frames_if_needed || false;
   
   const script = `
     var doc = app.activeDocument;

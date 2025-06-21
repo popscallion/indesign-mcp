@@ -5,11 +5,11 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { ExportFormat, ExportQuality, ImportOptions } from "../../types.js";
+import type { ExportFormat, ExportQuality } from "../../types.js";
 import { updatePageDimensionsCache } from "../layout/index.js";
 import { z } from "zod";
 import { promises as fs } from "fs";
-import { mkdtempSync, mkdirSync } from "fs";
+import { mkdirSync } from "fs";
 import path from "path";
 import os from "os";
 
@@ -36,7 +36,7 @@ function safeUserTempFile(name: string): string {
 /**
  * Generate cache key for preview (includes DPI for quality-specific caching)
  */
-function generateCacheKey(docName: string, page: number | null, quality: string, dpi: number): string {
+function _generateCacheKey(docName: string, page: number | null, quality: string, dpi: number): string {
   const pageKey = page || 1;
   return `${docName}_${pageKey}_${quality}_${dpi}`;
 }
@@ -44,7 +44,7 @@ function generateCacheKey(docName: string, page: number | null, quality: string,
 /**
  * Check if cached preview is still valid (less than 5 minutes old)
  */
-async function getCachedPreview(cacheKey: string, tempDir: string): Promise<string | null> {
+async function _getCachedPreview(cacheKey: string, _tempDir: string): Promise<string | null> {
   const cached = previewCache.get(cacheKey);
   if (!cached) return null;
 
@@ -69,7 +69,7 @@ async function getCachedPreview(cacheKey: string, tempDir: string): Promise<stri
 /**
  * Store preview in cache
  */
-function cachePreview(cacheKey: string, filePath: string): void {
+function _cachePreview(cacheKey: string, filePath: string): void {
   previewCache.set(cacheKey, {
     filePath,
     timestamp: Date.now()
@@ -115,7 +115,7 @@ async function cleanupOldPreviews(tempDir: string): Promise<void> {
 export async function registerExportTools(server: McpServer): Promise<void> {
   // Register export_document tool
   server.tool(
-    "test_export_document",
+    "export_document",
     {
       format: z.enum(["PDF", "EPUB", "HTML", "IDML", "JPEG", "PNG", "EPS"]).describe("Export format"),
       filePath: z.string().describe("Export file path (must be a valid local file path, not temp/... paths)"),
@@ -136,9 +136,9 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       }
       
       const escapedPath = escapeExtendScriptString(filePath);
-      const quality: ExportQuality = args.quality || "high";
+      const _quality: ExportQuality = args.quality || "high";
       const pages = args.pages || "all";
-      const spreads = args.spreads || false;
+      const _spreads = args.spreads || false;
 
       const script = `
         if (app.documents.length === 0) {
@@ -288,9 +288,9 @@ export async function registerExportTools(server: McpServer): Promise<void> {
         throw new Error("filePath parameter is required");
       }
       const escapedPath2 = escapeExtendScriptString(args.filePath);
-      const linkFile = args.link_file !== false; // default true
+      const _linkFile = args.link_file !== false; // default true
       const showOptions = args.show_options || false;
-      const retainFormat = args.retain_format !== false; // default true
+      const _retainFormat = args.retain_format !== false; // default true
 
       const script = `
         if (app.documents.length === 0) {
@@ -322,7 +322,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
           // Import the content
           var importedContent = textFrame.place(importFile, ${showOptions ? "true" : "false"});
           
-          if (${linkFile ? "true" : "false"}) {
+          if (${_linkFile ? "true" : "false"}) {
             "Content imported and linked from " + importFile.fsName;
           } else {
             "Content imported and embedded from " + importFile.fsName;
@@ -375,7 +375,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       const y = args.y || 72;
       const width = args.width || 200;
       const height = args.height || 200;
-      const linkFile = args.link_file !== false;
+      const _linkFile = args.link_file !== false;
       const fitContent = args.fit_content !== false;
 
       const script = `
@@ -458,7 +458,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       page_number: z.number().default(1).describe("Page number to get dimensions for (1-based), or 0 for all pages")
     },
     async (args) => {
-      const pageNumber = args.page_number || 1;
+      const _pageNumber = args.page_number || 1;
 
       const script = `
         (function () {
@@ -522,7 +522,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
   // Register preview_document tool
   server.tool(
     "preview_document",
-    "🔍 **CONTEXT**: Generate optimized PNG previews for rapid design iteration and visual feedback. Essential for validating styling changes and layout adjustments during automation workflows.\n\n**LIMITATIONS**: Requires open document. Preview quality affects generation speed. Temp files auto-cleanup after 1 hour. Current page only for speed.\n\n**EXAMPLES**:\n• Quick preview: `{quality: \"preview\"}` (72dpi, ~1-2 seconds)\n• Medium quality: `{quality: \"medium\", page: 2}` (150dpi for review)\n• High quality: `{quality: \"high\", auto_cleanup: false}` (300dpi, keep files)\n• Custom location: `{temp_dir: \"/Users/name/previews\"}`\n\n**ALTERNATIVES**: Use `test_export_document` for final exports. Manual export in InDesign. Screenshot tools for quick captures.\n\n**RESULTS**: Returns file path to generated PNG preview, enables visual validation of design changes, supports iterative design workflows with immediate feedback.",
+    "🔍 **CONTEXT**: Generate optimized PNG previews for rapid design iteration and visual feedback. Essential for validating styling changes and layout adjustments during automation workflows.\n\n**LIMITATIONS**: Requires open document. Preview quality affects generation speed. Temp files auto-cleanup after 1 hour. Current page only for speed.\n\n**EXAMPLES**:\n• Quick preview: `{quality: \"preview\"}` (72dpi, ~1-2 seconds)\n• Medium quality: `{quality: \"medium\", page: 2}` (150dpi for review)\n• High quality: `{quality: \"high\", auto_cleanup: false}` (300dpi, keep files)\n• Custom location: `{temp_dir: \"/Users/name/previews\"}`\n\n**ALTERNATIVES**: Use `export_document` for final exports. Manual export in InDesign. Screenshot tools for quick captures.\n\n**RESULTS**: Returns file path to generated PNG preview, enables visual validation of design changes, supports iterative design workflows with immediate feedback.",
     {
       quality: z.enum(["preview", "medium", "high"]).default("preview").describe("Preview quality: preview=72dpi (fast), medium=150dpi, high=300dpi"),
       page: z.number().optional().describe("Page number to preview (1-based), defaults to current active page"),
@@ -536,7 +536,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       const tempDir = args.temp_dir || os.tmpdir();
 
       // Validate temp directory path
-      const sanitizedTempDir = escapeExtendScriptString(tempDir);
+      const _sanitizedTempDir = escapeExtendScriptString(tempDir);
 
       // Map quality to DPI settings
       const qualitySettings = {
@@ -553,7 +553,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       // This will be resolved to /var/folders/<hash>/T which is user-accessible
       
       // Pre-calculate page index for simpler template
-      const pageIndex = page ? page - 1 : 0;
+      const _pageIndex = page ? page - 1 : 0;
       const pageValidation = page ? `
         if (doc.pages.length < ${page}) {
           throw new Error("Page ${page} does not exist. Document has " + doc.pages.length + " pages.");
@@ -612,7 +612,7 @@ export async function registerExportTools(server: McpServer): Promise<void> {
 📁 **FILE LOCATION**: ${filePath}
 📋 **WORKFLOW CONTEXT**: Visual preview generated for design validation.
 💡 **NEXT STEPS**: Review preview, make adjustments, and re-generate as needed.
-🔗 **RELATED TOOLS**: apply_paragraph_style, position_textframe, transform_objects`
+🔗 **RELATED TOOLS**: apply_paragraph_style, position_textframe, transform_objects, export_document`
           }]
         };
       } else {

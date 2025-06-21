@@ -6,11 +6,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript } from "../extendscript.js";
 
+interface PageInfo {
+  number: number;
+  frameCount: number;
+}
+
 interface DocumentSnapshot {
   schemaVersion: number;
-  document: any;
-  pages: any[];
-  threads: any[];
+  document: Record<string, unknown>;
+  pages: PageInfo[];
+  threads: Record<string, unknown>[];
   overset: boolean;
   warnings: string[];
 }
@@ -18,7 +23,7 @@ interface DocumentSnapshot {
 interface JsonPatchOp {
   op: "add" | "remove" | "replace" | "move" | "copy" | "test";
   path: string;
-  value?: any;
+  value?: unknown;
   from?: string;
 }
 
@@ -132,6 +137,27 @@ export function generatePatch(before: DocumentSnapshot, after: DocumentSnapshot)
 }
 
 /**
+ * Logs a progress event to the MCP server
+ */
+export async function logProgress(
+  server: McpServer,
+  toolName: string,
+  message: string,
+  progress?: { current: number; total: number }
+): Promise<void> {
+  await (server as any).server.sendLoggingMessage({
+    level: "info",
+    logger: "progress",
+    data: {
+      tool: toolName,
+      message,
+      progress,
+      timestamp: new Date().toISOString()
+    }
+  });
+}
+
+/**
  * Logs a change summary to the MCP server
  */
 export async function logChangeSummary(
@@ -143,23 +169,35 @@ export async function logChangeSummary(
   const patches = generatePatch(before, after);
   
   if (patches.length > 0) {
-    // Log change summary to stderr (MCP convention)
-    console.error("changeSummary:" + JSON.stringify({
-      tool: toolName,
-      patches: patches,
-      timestamp: new Date().toISOString()
-    }));
+    // Use proper MCP logging API
+    await (server as any).server.sendLoggingMessage({
+      level: "info",
+      logger: "changeSummary",
+      data: {
+        tool: toolName,
+        patches: patches,
+        timestamp: new Date().toISOString()
+      }
+    });
   }
 }
 
 /**
- * Decorator to wrap tool handlers with automatic change tracking
+ * Decorator to wrap tool handlers with automatic change tracking and progress support
  */
 export function withChangeTracking(server: McpServer, toolName: string) {
   return function (handler: Function) {
-    return async function (...args: any[]) {
+    return async function (...args: unknown[]) {
       const before = await captureSnapshot();
-      const result = await handler(...args);
+      
+      // Add progress logger to the args if the handler expects it
+      const progressLogger = {
+        log: (message: string, progress?: { current: number; total: number }) => 
+          logProgress(server, toolName, message, progress)
+      };
+      
+      // If the handler accepts progressLogger, pass it as the last argument
+      const result = await handler(...args, progressLogger);
       const after = await captureSnapshot();
       
       if (before && after) {

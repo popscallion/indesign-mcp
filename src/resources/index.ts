@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScript, escapeExtendScriptString } from "../extendscript.js";
+import { executeExtendScript } from "../extendscript.js";
 
 /**
  * Registers read-only resources with the MCP server.

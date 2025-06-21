@@ -4,7 +4,6 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import { registerTextTools } from "./text/index.js";
 import { registerStyleTools } from "./styles/index.js";
 import { registerLayoutTools } from "./layout/index.js";

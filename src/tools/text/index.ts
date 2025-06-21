@@ -7,69 +7,70 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { TextPosition } from "../../types.js";
 import { z } from "zod";
+import { withChangeTracking } from "../../utils/changeSummary.js";
 
 /**
  * Registers all text manipulation tools with the MCP server
  */
 export async function registerTextTools(server: McpServer): Promise<void> {
-  // Register add_text tool  
+  // Schema for add_text tool inputs
+  const addTextSchema = {
+    text: z.string().describe("Text to add to the document"),
+    position: z.enum(["start", "end", "after_selection"]).default("end").describe("Position where to add the text")
+  } as const;
+
+  // Core implementation of add_text (untracked)
+  const addTextCore = async ({ text, position }: { text: string; position: TextPosition }) => {
+    const escapedText = escapeExtendScriptString(text);
+    const textPosition: TextPosition = position || "end";
+
+    const script = `
+      if (app.documents.length === 0) {
+        throw new Error("No documents are open in InDesign. Please open a document first.");
+      }
+      
+      var doc = app.activeDocument;
+      if (!doc) {
+        throw new Error("No active document found. Please make sure a document is active.");
+      }
+      
+      if (doc.stories.length === 0) {
+        throw new Error("Document has no text stories. Please add a text frame first.");
+      }
+      
+      var story = doc.stories[0];
+      var insertionPoint;
+      
+      if ("${textPosition}" === "start") {
+        insertionPoint = story.insertionPoints[0];
+      } else if ("${textPosition}" === "end") {
+        insertionPoint = story.insertionPoints[-1];
+      } else {
+        insertionPoint = story.insertionPoints[-1];
+      }
+      
+      insertionPoint.contents = "${escapedText}";
+      "Text added successfully to " + doc.name;
+    `;
+
+    const result = await executeExtendScript(script);
+
+    if (result.success) {
+      return {
+        content: [{ type: "text", text: `Successfully added text: '${text}'` }]
+      };
+    }
+
+    return {
+      content: [{ type: "text", text: `Error adding text: ${result.error}` }]
+    };
+  };
+
+  // Register tool with automatic change tracking
   server.tool(
     "add_text",
-    {
-      text: z.string().describe("Text to add to the document"),
-      position: z.enum(["start", "end", "after_selection"]).default("end").describe("Position where to add the text")
-    },
-    async ({ text, position }) => {
-      const escapedText = escapeExtendScriptString(text);
-      const textPosition: TextPosition = position || "end";
-      
-      const script = `
-        if (app.documents.length === 0) {
-          throw new Error("No documents are open in InDesign. Please open a document first.");
-        }
-        
-        var doc = app.activeDocument;
-        if (!doc) {
-          throw new Error("No active document found. Please make sure a document is active.");
-        }
-        
-        if (doc.stories.length === 0) {
-          throw new Error("Document has no text stories. Please add a text frame first.");
-        }
-        
-        var story = doc.stories[0];
-        var insertionPoint;
-        
-        if ("${textPosition}" === "start") {
-          insertionPoint = story.insertionPoints[0];
-        } else if ("${textPosition}" === "end") {
-          insertionPoint = story.insertionPoints[-1];
-        } else {
-          insertionPoint = story.insertionPoints[-1];
-        }
-        
-        insertionPoint.contents = "${escapedText}";
-        "Text added successfully to " + doc.name;
-      `;
-      
-      const result = await executeExtendScript(script);
-      
-      if (result.success) {
-        return {
-          content: [{
-            type: "text",
-            text: `Successfully added text: '${text}'`
-          }]
-        };
-      } else {
-        return {
-          content: [{
-            type: "text", 
-            text: `Error adding text: ${result.error}`
-          }]
-        };
-      }
-    }
+    addTextSchema,
+    withChangeTracking(server, "add_text")(addTextCore)
   );
 
   // Register update_text tool
@@ -80,7 +81,7 @@ export async function registerTextTools(server: McpServer): Promise<void> {
       replaceText: z.string().describe("Text to replace with"),
       all_occurrences: z.boolean().default(false).describe("Replace all occurrences or just the first")
     },
-    async (args) => {
+    withChangeTracking(server, "update_text")(async (args: any) => {
       const findText = escapeExtendScriptString(args.findText);
       const replaceText = escapeExtendScriptString(args.replaceText);
       const allOccurrences = args.all_occurrences || false;
@@ -126,7 +127,7 @@ export async function registerTextTools(server: McpServer): Promise<void> {
           }]
         };
       }
-    }
+    })
   );
 
   // Register remove_text tool
@@ -136,7 +137,7 @@ export async function registerTextTools(server: McpServer): Promise<void> {
       text: z.string().describe("Text to remove from the document"),
       all_occurrences: z.boolean().default(false).describe("Remove all occurrences or just the first")
     },
-    async (args) => {
+    withChangeTracking(server, "remove_text")(async (args: any) => {
       const textToRemove = escapeExtendScriptString(args.text);
       const allOccurrences = args.all_occurrences || false;
       
@@ -181,7 +182,7 @@ export async function registerTextTools(server: McpServer): Promise<void> {
           }]
         };
       }
-    }
+    })
   );
 
   // Register get_document_text tool

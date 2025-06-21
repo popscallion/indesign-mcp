@@ -289,7 +289,7 @@ async function handleCreateTable(args: any): Promise<{ content: TextContent[] }>
   };
 }
 
-async function handleInDesignStatus(args: any): Promise<{ content: TextContent[] }> {
+async function handleInDesignStatus(_args: any): Promise<{ content: TextContent[] }> {
   const script = `
     var status = "=== InDesign Status ===\\n";
     status += "Application: " + app.name + " " + app.version + "\\n";

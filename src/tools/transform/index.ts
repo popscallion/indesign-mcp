@@ -5,8 +5,8 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { TransformationType, AlignmentType, DistributionType, TransformValues } from "../../types.js";
+import { executeExtendScript } from "../../extendscript.js";
+import type { TransformationType, AlignmentType, DistributionType } from "../../types.js";
 
 /**
  * Registers all object transformation tools with the MCP server
