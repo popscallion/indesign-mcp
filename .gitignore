@@ -70,3 +70,7 @@ temp/
 # Project documentation
 CLAUDE.md
 docs/
+
+# Root markdown files (PRDs and guides)
+/*.md
+!README.md

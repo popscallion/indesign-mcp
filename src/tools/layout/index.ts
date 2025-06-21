@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import { z } from "zod";
+import { toPoints } from "../../utils/coords.js";
 
 /**
  * Document state cache for prerequisite tracking
@@ -208,38 +209,25 @@ async function handlePositionTextFrame(args: any): Promise<{ content: TextConten
   const width = args.width || -1;
   const height = args.height || -1;
   
+  const pageDims = documentState.knownPageDimensions;
+  const pageWidth = pageDims ? pageDims.width : 612;
+  const pageHeight = pageDims ? pageDims.height : 792;
+
+  const xPt = toPoints(args.x, "x", pageWidth, pageHeight);
+  const yPt = toPoints(args.y, "y", pageWidth, pageHeight);
+  const wPt = args.width && args.width!==-1 ? toPoints(args.width, "w", pageWidth, pageHeight) : -1;
+  const hPt = args.height && args.height!==-1 ? toPoints(args.height, "h", pageWidth, pageHeight) : -1;
+
   const script = `
     var doc = app.activeDocument;
-    if (doc.textFrames.length <= ${textFrameIndex}) {
-      throw new Error("Text frame index out of range.");
+    var page = doc.layoutWindows[0].activePage;
+    var frame = page.textFrames[${textFrameIndex}];
+    if(!frame) { throw new Error('Text frame index out of range'); }
+    frame.move([${xPt}, ${yPt}]);
+    if (${wPt} > 0 && ${hPt} > 0) {
+      frame.geometricBounds = [${yPt}, ${xPt}, ${yPt + hPt}, ${xPt + wPt}];
     }
-    
-    // Store original script measurement unit
-    var originalScriptUnit = app.scriptPreferences.measurementUnit;
-    
-    try {
-      // Force script to interpret values as points for consistency
-      app.scriptPreferences.measurementUnit = MeasurementUnits.POINTS;
-      
-      var textFrame = doc.textFrames[${textFrameIndex}];
-      var currentBounds = textFrame.geometricBounds;
-      
-      // Set new bounds [y1, x1, y2, x2] in points
-      var newBounds = [
-        ${y},
-        ${x},
-        ${height > 0 ? y + height : 'currentBounds[2]'},
-        ${width > 0 ? x + width : 'currentBounds[3]'}
-      ];
-      
-      textFrame.geometricBounds = newBounds;
-      
-      "Text frame repositioned successfully";
-      
-    } finally {
-      // Always restore original script measurement unit
-      app.scriptPreferences.measurementUnit = originalScriptUnit;
-    }
+    'moved';
   `;
   
   const result = await executeExtendScript(script);
@@ -247,32 +235,15 @@ async function handlePositionTextFrame(args: any): Promise<{ content: TextConten
   // Update workflow tracking on success
   if (result.success) {
     markStepCompleted("position_textframe");
-  }
-  
-  if (result.success) {
+    // emit simple changeSummary patch via console (can be captured by logger)
+    const patchArr = [
+      { op: "replace", path: `/textFrames/${textFrameIndex}/bounds`, value: [yPt, xPt, yPt + (hPt > 0 ? hPt : 0), xPt + (wPt > 0 ? wPt : 0)] }
+    ];
+    console.error("changeSummary:" + JSON.stringify(patchArr));
     return {
-      content: [{
-        type: "text",
-        text: `✅ ${result.result}
-
-📋 WORKFLOW CONTEXT: Text frame positioning completed. This is part of Layout Operations workflow.
-💡 NEXT STEPS: Consider using get_textframe_info() to verify positioning or continue with text content operations.`
-      }]
+      content:[{type:"text", text:"Text frame positioned" }]
     };
   } else {
-    // Enhanced error handling with context
-    if (result.error && result.error.includes("out of range")) {
-      return createGuidedErrorResponse(
-        result.error,
-        "position_textframe",
-        [
-          "Use get_textframe_info() to see available text frames",
-          "Check frame indices with get_page_info()",
-          "Consider creating new frames with create_textframe()"
-        ]
-      );
-    }
-    
     return createGuidedErrorResponse(
       result.error || "Unknown error during text frame positioning",
       "position_textframe",
@@ -282,131 +253,44 @@ async function handlePositionTextFrame(args: any): Promise<{ content: TextConten
 }
 
 async function handleCreateTextFrame(args: any): Promise<{ content: TextContent[] }> {
-  // STEP 1: Automatic prerequisite checking
   const validationResult = await validateLayoutPrerequisites(args, "create_textframe");
   if (!validationResult.canProceed) {
     return createGuidedErrorResponse(
       validationResult.blockers.join(', '),
-      "create_textframe", 
+      "create_textframe",
       validationResult.recommendations
     );
   }
 
-  if (args.x === undefined || args.x === null) {
-    return createGuidedErrorResponse(
-      "x parameter is required",
-      "create_textframe",
-      ["Provide X position in points", "Check page dimensions first with get_page_dimensions()"]
-    );
-  }
-  if (args.y === undefined || args.y === null) {
-    return createGuidedErrorResponse(
-      "y parameter is required",
-      "create_textframe", 
-      ["Provide Y position in points", "Check page dimensions first with get_page_dimensions()"]
-    );
-  }
-  if (args.width === undefined || args.width === null) {
-    return createGuidedErrorResponse(
-      "width parameter is required",
-      "create_textframe",
-      ["Provide width in points", "Use get_page_dimensions() to understand available space"]
-    );
-  }
-  if (args.height === undefined || args.height === null) {
-    return createGuidedErrorResponse(
-      "height parameter is required",
-      "create_textframe",
-      ["Provide height in points", "Use get_page_dimensions() to understand available space"]
-    );
-  }
-  
-  const x = args.x;
-  const y = args.y;
-  const width = args.width;
-  const height = args.height;
-  const pageNumber = args.page_number || 1;
-  const textContent = args.text_content ? escapeExtendScriptString(args.text_content) : "";
-  
-  const script = `
-    var doc = app.activeDocument;
-    if (doc.pages.length < ${pageNumber}) {
-      throw new Error("Page number " + ${pageNumber} + " out of range. Document has " + doc.pages.length + " pages.");
-    }
-    
-    // Store original script measurement unit
-    var originalScriptUnit = app.scriptPreferences.measurementUnit;
-    
-    try {
-      // Force script to interpret values as points for consistency
-      app.scriptPreferences.measurementUnit = MeasurementUnits.POINTS;
-      
-      var page = doc.pages[${pageNumber} - 1];
-      var textFrame = page.textFrames.add();
-      
-      // Set bounds [y1, x1, y2, x2] in points
-      textFrame.geometricBounds = [${y}, ${x}, ${y + height}, ${x + width}];
-      
-      if ("${textContent}" !== "") {
-        textFrame.contents = "${textContent}";
-      }
-      
-      "Text frame created successfully on page " + (page.name || ${pageNumber});
-      
-    } finally {
-      // Always restore original script measurement unit
-      app.scriptPreferences.measurementUnit = originalScriptUnit;
-    }
-  `;
-  
-  const result = await executeExtendScript(script);
-  
-  // Update workflow tracking on success
-  if (result.success) {
-    markStepCompleted("create_textframe");
-  }
-  
-  if (result.success) {
-    return {
-      content: [{
-        type: "text",
-        text: `✅ ${result.result}
+  const pageDims = documentState.knownPageDimensions;
+  const pageWidth = pageDims ? pageDims.width : 612;
+  const pageHeight = pageDims ? pageDims.height : 792;
 
-📋 WORKFLOW CONTEXT: Text frame creation completed. This is step 4 in Text Frame Management workflow.
-💡 NEXT STEPS: Consider adding text content with add_text() or positioning with position_textframe().
-🔗 RELATED TOOLS: add_text, position_textframe, get_textframe_info`
-      }]
-    };
-  } else {
-    // Enhanced error handling with context
-    if (result.error && result.error.includes("out of range")) {
-      return createGuidedErrorResponse(
-        result.error,
-        "create_textframe",
-        [
-          "Check document page count with get_page_info()",
-          "Add pages with add_pages() if needed",
-          "Verify page number is within document range"
-        ]
-      );
-    }
-    
-    if (result.error && result.error.includes("bounds")) {
-      return createGuidedErrorResponse(
-        result.error,
-        "create_textframe",
-        [
-          "Check page dimensions with get_page_dimensions()",
-          "Adjust frame size to fit within page bounds",
-          "Use smaller dimensions or different positioning"
-        ]
-      );
-    }
-    
-    return createGuidedErrorResponse(
-      result.error || "Unknown error during text frame creation",
-      "create_textframe",
-      ["Check InDesign status with indesign_status", "Verify document is open and editable"]
-    );
+  const xPt = toPoints(args.x, "x", pageWidth, pageHeight);
+  const yPt = toPoints(args.y, "y", pageWidth, pageHeight);
+  const wPt = toPoints(args.width, "w", pageWidth, pageHeight);
+  const hPt = toPoints(args.height, "h", pageWidth, pageHeight);
+
+  const escapedText = escapeExtendScriptString(args.text_content || "");
+  const pageNumber = args.page_number || 1;
+
+  const jsx = `
+    var doc = app.activeDocument;
+    if (doc.pages.length < ${pageNumber}) { throw new Error('Page number out of range'); }
+    var page = doc.pages[${pageNumber-1}];
+    var frame = page.textFrames.add({ geometricBounds: [${yPt}, ${xPt}, ${yPt + hPt}, ${xPt + wPt}] });
+    if ("${escapedText}" !== "") { frame.contents = "${escapedText}"; }
+    'created';
+  `;
+
+  const res = await executeExtendScript(jsx);
+  if (res.success) {
+    markStepCompleted("create_textframe");
+    const patchArr = [
+      { op: "add", path: "/pages/-/frames/-", value: { bounds:[yPt,xPt,yPt+hPt,xPt+wPt] } }
+    ];
+    console.error("changeSummary:" + JSON.stringify(patchArr));
+    return { content:[{ type:"text", text:"Text frame created" }] };
   }
+  return createGuidedErrorResponse(res.error || "Unknown error during text frame creation", "create_textframe", []);
 }

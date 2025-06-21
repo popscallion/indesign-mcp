@@ -130,58 +130,12 @@ This workflow ensures reliable, predictable InDesign automation while maintainin
 }
 
 /**
- * Additional strategic prompts for specific document types and workflows
+ * Scenario-specific strategic prompts for MVP workflows
  */
-export function magazine_layout_strategy(): string {
-  return `For magazine-style layouts in InDesign:
-
-1. MASTER PAGE SETUP (Always first):
-   - Check existing master pages with get_page_info()
-   - Plan consistent margins and column structure
-   - Set up automatic page numbering with insert_special_character()
-
-2. TYPOGRAPHY HIERARCHY:
-   - Create headline styles (large, bold, distinctive)
-   - Create subhead styles (medium weight, clear hierarchy)
-   - Create body text styles (readable, appropriate leading)
-   - Create caption styles (smaller, often italic)
-
-3. TEXT FLOW MANAGEMENT:
-   - Plan article threading across multiple pages
-   - Use thread_text_frames() for continuous stories
-   - Monitor overset text throughout layout process
-   - Keep related content grouped logically
-
-4. VISUAL CONSISTENCY:
-   - Apply consistent spacing using align/distribute tools
-   - Use character styles for consistent emphasis
-   - Maintain consistent column structures
-   - Apply consistent image treatment`;
+export function copy_design_strategy(): string {
+  return `COPY-DESIGN WORKFLOW (v1)\n\n0. ALWAYS: indesign_status → document_snapshot → style_catalog\n1. Study the user reference image (built-in vision). Infer:\n   • page ratio and rough margins\n   • number of text frames (body, footnote, folio, etc.)\n   • alignment and hierarchy (heading/body/footnote)\n2. create_page_from_reference(fromPage:1) if a similar template page exists OR duplicate_layout if appropriate.\n3. For each inferred frame:\n   – create_textframe with percentage coords (converted automatically)\n   – apply_style_batch or ensure_styles_exist for font mapping (Arial if unsure)\n4. validate_layout — loop until passed==true\n5. preview_document (quality:"preview", page:<n>) to show result\n6. Present summary + next steps.`;
 }
 
-export function report_document_strategy(): string {
-  return `For report-style documents in InDesign:
-
-1. DOCUMENT STRUCTURE PLANNING:
-   - Calculate total pages needed with add_pages()
-   - Set up consistent page dimensions
-   - Plan header/footer areas and page numbering
-
-2. HIERARCHICAL CONTENT ORGANIZATION:
-   - Create heading styles (H1, H2, H3 equivalent)
-   - Set up body text with proper paragraph spacing
-   - Create list styles for bullet points and numbering
-   - Plan table of contents and index formatting
-
-3. TEXT FLOW OPTIMIZATION:
-   - Use single-column layout for readability
-   - Maintain consistent text frame threading
-   - Plan page breaks for logical content divisions
-   - Set up automatic page numbering and headers
-
-4. PROFESSIONAL FORMATTING:
-   - Apply consistent spacing after headings
-   - Use character styles for technical terms
-   - Maintain consistent margins and white space
-   - Plan export format for final delivery`;
+export function add_content_strategy(): string {
+  return `ADD-CONTENT WORKFLOW (v1)\n\n0. ALWAYS: indesign_status → document_snapshot → style_catalog\n1. Analyze existing document style & threading. Identify last page with content.\n2. auto_flow_text(text:<user-content>, startPage:lastPage, style:"Body", addPages:true)\n3. validate_layout → if overset, auto_flow_text(addPages:true) again or resolve_overset_text\n4. preview_document(page:lastPage+*) to confirm flow\n5. save_document (optional).`;
 }

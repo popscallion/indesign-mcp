@@ -5,10 +5,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # InDesign MCP Server
 
 ## 🎯 Project Overview
-We're expanding a **TypeScript InDesign MCP server** from 34 working tools to comprehensive InDesign automation coverage (60+ tools across 4 tiers).
+Building an **AI-driven InDesign automation platform** using TypeScript MCP (Model Context Protocol) server that bridges LLMs with Adobe InDesign via ExtendScript.
 
-**Current State**: Fully functional TypeScript MCP with 34 working tools across 8 categories  
-**Goal**: Complete InDesign automation platform covering document export, page properties, object transformation, advanced text operations, and more.
+**Current State**: Production-ready TypeScript MCP with 35 working tools + foundational resources/prompts
+**Goal**: Complete agentic workflow platform for two MVP scenarios:
+1. **Copy-Design** – Recreate reference page layouts from images
+2. **Add-Content** – Flow new text into existing documents while preserving design
+
+## 📌 Current Development Focus
+Based on PRD analysis and TODO.md status:
+
+### High Priority Tasks
+1. **PRD-01 M2**: Enhance `document_snapshot` resource with:
+   - Text threading relationships between frames
+   - Overset detection flags per story
+   - Content samples (first 200 chars) for each text frame
+   
+2. **PRD-01 M3**: Implement `preview_page` PNG rendering
+   - Generate visual previews of InDesign pages
+   - Return as base64-encoded PNG via MCP resource
+
+### Medium Priority Tasks
+3. **PRD-04**: Formal change tracking system
+   - Implement JSON-Patch based changeSummary emission
+   - Add server.log integration for all mutating tools
+   
+4. **Testing Infrastructure**: 
+   - Unit tests for style_catalog & snapshot resources
+   - SDK test client integration
+
+### Low Priority Tasks
+5. Remove legacy magazine/report prompts (PRD-03 Phase C)
+6. Add CI script for automated testing
 
 ## 📁 Project Structure
 ```
@@ -17,7 +45,8 @@ indesign-mcp/                    # Main TypeScript MCP project
 │   ├── index.ts                 # Server entry point
 │   ├── extendscript.ts          # AppleScript-ExtendScript bridge
 │   ├── types.ts                 # TypeScript type definitions
-│   └── tools/                   # Tool implementations (8 categories)
+│   ├── tools/                   # Tool implementations (8 categories)
+│   └── prompts/                 # Strategic workflow prompts
 ├── dist/                        # Compiled JavaScript
 └── package.json                 # Dependencies & scripts
 
@@ -47,7 +76,7 @@ npm run build && npm start    # Validate compilation and server startup
 
 ### Current Setup
 - **Repository**: `indesign-mcp` on GitHub
-- **Main Branch**: `main` (34 working tools)
+- **Main Branch**: `main` (35 working tools)
 - **Development**: Feature branches for tier implementation
 
 ### Branch Strategy
@@ -142,22 +171,24 @@ Keep these test documents ready:
 
 ## 📊 Implementation Status
 
-### ✅ Completed (34 tools)
+### ✅ Completed (35 tools)
 - **Text Tools** (4): add_text, update_text, remove_text, get_document_text
 - **Style Tools** (8): paragraph/character style management, text selection
 - **Layout Tools** (3): text frame positioning, creation, and info
 - **Page Tools** (4): page management, dimensions
 - **Special Tools** (4): layers, tables, special characters, status
 - **Threading/Flow Tools** (6): text threading, overset resolution, flow management
-- **Export/Import Tools** (5): document export, save, import content, place files
+- **Export/Import Tools** (6): document export, save, import content, place files, preview
 - **Transform Tools** (3): object transformation, duplication, alignment
 
-### 🎯 Next Priority: Tier 2+ (26+ remaining tools)
+### 🎯 Next Priority: AI visual feedback testing
+1. Manual test scenario
+
+### Later enhancements: Tier 2+ tools (remaining tools)
 Focus areas for continued expansion:
 1. **Advanced Text Operations**: find/replace, spell check, typography
 2. **Image Management**: image processing, effects, color management
 3. **Print Production**: color separation, preflighting, packaging
-4. **Interactive Elements**: buttons, forms, hyperlinks, bookmarks
 
 ### 📋 Documentation Guide
 - **InDesign API Reference** (`docs/InDesign ExtendScript_API_Adob_InDesign_2025/`): Complete Adobe InDesign 2025 ExtendScript API documentation for method signatures, parameters, and examples
@@ -182,6 +213,7 @@ npm run build && npm start
 **Core Infrastructure**:
 - `src/index.ts` - MCP server entry point and configuration
 - `src/tools/index.ts` - Central tool registration (8 categories)
+- `src/prompts/index.ts` - Strategic workflow prompts for intelligent automation
 - `src/extendscript.ts` - AppleScript→ExtendScript bridge with app detection
 - `src/types.ts` - TypeScript interfaces for all tool parameters
 
@@ -196,7 +228,7 @@ npm run build && npm start
 - `pages/` - Page management (3 tools)
 - `special/` - Layers, tables, special chars (4 tools)
 - `utility/` - Threading, flow management (6 tools)
-- `export/` - Document export/import (5 tools) 
+- `export/` - Document export/import (6 tools) 
 - `transform/` - Object transformation (3 tools)
 
 ## 🔄 Development Cycle

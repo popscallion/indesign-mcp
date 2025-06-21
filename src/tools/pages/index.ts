@@ -8,6 +8,7 @@ import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { PageLocation } from "../../types.js";
 import { z } from "zod";
+import { captureSnapshot, logChangeSummary } from "../../utils/changeSummary.js";
 
 /**
  * Registers page management tools with the MCP server
@@ -22,7 +23,7 @@ export async function registerPageTools(server: McpServer): Promise<void> {
       master_spread: z.string().default("").describe("Master spread to apply")
     },
     async (args) => {
-      return await handleAddPages(args);
+      return await handleAddPages(args, server);
     }
   );
 
@@ -30,10 +31,11 @@ export async function registerPageTools(server: McpServer): Promise<void> {
   server.tool(
     "remove_pages",
     {
-      page_range: z.string().describe("Page range to remove (e.g., '2-4' or '3')")
+      page_range: z.string().describe("Page range to remove (e.g., '2-4' or '3')"),
+      dry_run: z.boolean().default(false).describe("If true, simulate removal and immediately undo")
     },
     async (args) => {
-      return await handleRemovePages(args);
+      return await handleRemovePages(args, server);
     }
   );
 
@@ -50,10 +52,13 @@ export async function registerPageTools(server: McpServer): Promise<void> {
 }
 
 
-async function handleAddPages(args: any): Promise<{ content: TextContent[] }> {
+async function handleAddPages(args: any, server: McpServer): Promise<{ content: TextContent[] }> {
   const pageCount = args.page_count || 1;
   const location: PageLocation = args.location || "end";
   const masterSpread = args.master_spread ? escapeExtendScriptString(args.master_spread) : "";
+  
+  // Capture snapshot before operation
+  const before = await captureSnapshot();
   
   const script = `
     var doc = app.activeDocument;
@@ -95,6 +100,12 @@ async function handleAddPages(args: any): Promise<{ content: TextContent[] }> {
   
   const result = await executeExtendScript(script);
   
+  // Capture snapshot after operation and log changes
+  const after = await captureSnapshot();
+  if (before && after && result.success) {
+    await logChangeSummary(server, "add_pages", before, after);
+  }
+  
   return {
     content: [{
       type: "text",
@@ -103,53 +114,50 @@ async function handleAddPages(args: any): Promise<{ content: TextContent[] }> {
   };
 }
 
-async function handleRemovePages(args: any): Promise<{ content: TextContent[] }> {
-  if (!args.page_range) {
-    throw new Error("page_range parameter is required");
-  }
-  
+async function handleRemovePages(args: any, server: McpServer): Promise<{ content: TextContent[] }> {
+  if (!args.page_range) throw new Error("page_range parameter is required");
   const pageRange = escapeExtendScriptString(args.page_range);
+  const dry = !!args.dry_run;
+
+  // Capture snapshot before operation
+  const before = await captureSnapshot();
   
-  const script = `
+  const jsx = `
     var doc = app.activeDocument;
     var pageNumbers = "${pageRange}";
     var pagesToRemove = [];
-    
-    // Parse page range (e.g., "2-4" or "3")
     if (pageNumbers.indexOf("-") !== -1) {
       var parts = pageNumbers.split("-");
       var start = parseInt(parts[0]);
       var end = parseInt(parts[1]);
-      
-      for (var i = start; i <= end; i++) {
-        if (i <= doc.pages.length) {
-          pagesToRemove.push(doc.pages[i - 1]);
-        }
-      }
+      for (var i = start; i <= end; i++) { if (i <= doc.pages.length) pagesToRemove.push(doc.pages[i-1]); }
     } else {
-      var pageNum = parseInt(pageNumbers);
-      if (pageNum <= doc.pages.length) {
-        pagesToRemove.push(doc.pages[pageNum - 1]);
-      }
+      var n = parseInt(pageNumbers); if (n <= doc.pages.length) pagesToRemove.push(doc.pages[n-1]);
     }
-    
-    var removedCount = 0;
-    for (var j = pagesToRemove.length - 1; j >= 0; j--) {
-      pagesToRemove[j].remove();
-      removedCount++;
+    var removed = 0;
+    function core() {
+      for (var j = pagesToRemove.length-1; j>=0; j--) { pagesToRemove[j].remove(); removed++; }
     }
-    
-    "Removed " + removedCount + " page(s) successfully";
+    if (${dry}) {
+      app.doScript(core, ScriptLanguage.JAVASCRIPT, undefined, UndoModes.ENTIRE_SCRIPT, "dryRemove");
+      app.undo();
+    } else {
+      core();
+    }
+    JSON.stringify({ removed: removed, dry:${dry} });
   `;
+
+  const res = await executeExtendScript(jsx);
+  if(!res.success) return { content:[{ type:"text", text:`Error: ${res.error}` }] };
   
-  const result = await executeExtendScript(script);
+  // Capture snapshot after operation and log changes (only if not dry run)
+  const after = await captureSnapshot();
+  if (before && after && res.success && !dry) {
+    await logChangeSummary(server, "remove_pages", before, after);
+  }
   
-  return {
-    content: [{
-      type: "text",
-      text: result.success ? `Successfully removed pages: ${result.result}` : `Error removing pages: ${result.error}`
-    }]
-  };
+  console.error("changeSummary:"+res.result);
+  return { content:[{ type:"text", text:`remove_pages ${dry?"simulated":"completed"}: ${res.result}` }] };
 }
 
 async function handleGetPageInfo(args: any): Promise<{ content: TextContent[] }> {

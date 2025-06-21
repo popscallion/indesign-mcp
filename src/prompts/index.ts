@@ -6,9 +6,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { 
   document_creation_strategy, 
-  magazine_layout_strategy, 
-  report_document_strategy 
-} from "./document-strategy.js";
+  copy_design_strategy,
+  add_content_strategy } from "./document-strategy.js";
 
 /**
  * Registers all strategic prompts with the MCP server
@@ -33,35 +32,24 @@ export async function registerStrategicPrompts(server: McpServer): Promise<void>
       })
     );
 
-    // Register document-type specific strategy prompts
+    // Register scenario-specific strategy prompts
+
     server.prompt(
-      "magazine_layout_strategy", 
-      "Specialized workflow guidance for magazine-style layouts in InDesign",
+      "copy_design_strategy",
+      "Step-by-step guide for replicating a reference layout in InDesign",
       () => ({
         messages: [
-          {
-            role: "assistant" as const,
-            content: {
-              type: "text" as const,
-              text: magazine_layout_strategy()
-            }
-          }
+          { role:"assistant", content:{ type:"text", text: copy_design_strategy() } }
         ]
       })
     );
 
     server.prompt(
-      "report_document_strategy",
-      "Specialized workflow guidance for report-style documents in InDesign", 
+      "add_content_strategy",
+      "Guide for flowing new content into existing document while preserving design",
       () => ({
         messages: [
-          {
-            role: "assistant" as const,
-            content: {
-              type: "text" as const,
-              text: report_document_strategy()
-            }
-          }
+          { role:"assistant", content:{ type:"text", text: add_content_strategy() } }
         ]
       })
     );

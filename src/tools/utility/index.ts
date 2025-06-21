@@ -181,7 +181,51 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     }
   );
 
-  // Register resolve_overset_text tool
+  // Register undo_last tool
+  server.tool(
+    "undo_last",
+    {},
+    async () => {
+      const jsx = `
+        if (app.documents.length === 0) { throw new Error('No active document'); }
+        try { app.undo(); } catch(e) { throw new Error('Nothing to undo'); }
+        'undone';
+      `;
+      const r = await executeExtendScript(jsx);
+      return { content:[{ type:"text", text: r.success ? 'Last action undone' : `Error: ${r.error}` }] };
+    }
+  );
+
+  // === validate_layout ==============================================
+  server.tool(
+    "validate_layout",
+    {},
+    async (): Promise<{ content: TextContent[] }> => {
+      const jsx = `
+        if (app.documents.length === 0) { throw new Error('No active document'); }
+        var doc = app.activeDocument;
+        var issues = [];
+        // Overset check
+        for (var i=0;i<doc.stories.length;i++){
+          if(doc.stories[i].overflows) issues.push({ type:'overset_text', story:i });
+        }
+        // Empty frame check
+        for (var p=0;p<doc.pages.length;p++){
+          var page = doc.pages[p];
+          for(var f=0;f<page.textFrames.length;f++){
+            var tf = page.textFrames[f];
+            if(tf.contents.length===0) issues.push({ type:'empty_frame', page:p+1, frame:f });
+          }
+        }
+        var passed = issues.length === 0;
+        JSON.stringify({ passed: passed, issues: issues });
+      `;
+      const r = await executeExtendScript(jsx);
+      if(!r.success) return { content:[{ type:"text", text:`Error: ${r.error}` }] };
+      return { content:[{ type:"text", text: r.result! }] };
+    }
+  );
+}
 
 async function handleResolveOversetText(args: any): Promise<{ content: TextContent[] }> {
   const sourcePage = args.source_page || -1;
@@ -649,5 +693,4 @@ async function handleCopyTextFrameProperties(args: any): Promise<{ content: Text
       text: result.success ? `Successfully copied frame properties:\n${result.result}` : `Error copying frame properties: ${result.error}`
     }]
   };
-}
 }

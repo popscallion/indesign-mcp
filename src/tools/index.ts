@@ -13,6 +13,7 @@ import { registerSpecialTools } from "./special/index.js";
 import { registerUtilityTools } from "./utility/index.js";
 import { registerExportTools } from "./export/index.js";
 import { registerTransformTools } from "./transform/index.js";
+import { registerCompositeTools } from "./composite/index.js";
 
 /**
  * Registers all InDesign tools with the MCP server
@@ -43,6 +44,9 @@ export async function registerAllInDesignTools(server: McpServer): Promise<void>
     
     // Tier 1 Expansion: Object Transformation (3 tools) 
     await registerTransformTools(server);
+    
+    // Composite Macros
+    await registerCompositeTools(server);
     
     console.error("Successfully registered all InDesign tools");
   } catch (error) {
