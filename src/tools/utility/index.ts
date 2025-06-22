@@ -202,6 +202,11 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     {},
     async (): Promise<{ content: TextContent[] }> => {
       const jsx = `
+        // JSON shim for older ExtendScript engines
+        if (typeof JSON === 'undefined' || !JSON.stringify) {
+          JSON = { stringify: function(v) { try { return v.toSource(); } catch(e) { return ''; } } };
+        }
+
         if (app.documents.length === 0) { throw new Error('No active document'); }
         var doc = app.activeDocument;
         var issues = [];
@@ -255,18 +260,19 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
         
         var allIssues = issues.concat(warnings);
         var passed = issues.length === 0; // Only errors affect pass/fail
-        JSON.stringify({ 
+        var report = { 
           passed: passed, 
           issues: allIssues,
           errorCount: issues.length,
           warningCount: warnings.length
-        });
+        };
+        report.toSource();
       `;
       const r = await executeExtendScript(jsx);
       if(!r.success) return { content:[{ type:"text", text:`Error: ${r.error}` }] };
       
       // Parse validation result and convert to changeSummary patches
-      const validation = JSON.parse(r.result!);
+      const validation = eval(r.result!);
       if (!validation.passed && validation.issues.length > 0) {
         const patches = validation.issues.map((issue: any, index: number) => ({
           op: "add",
@@ -305,6 +311,10 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
       const includeRecommendations = args.include_recommendations !== false;
       
       const jsx = `
+        if (typeof JSON === 'undefined' || !JSON.stringify) {
+          JSON = { stringify: function(v){ try{return v.toSource();}catch(e){return ''; } } };
+        }
+
         if (app.documents.length === 0) { throw new Error('No active document'); }
         var doc = app.activeDocument;
         var summary = {
@@ -413,13 +423,13 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
           }
         }
         
-        JSON.stringify(summary);
+        summary.toSource();
       `;
       
       const r = await executeExtendScript(jsx);
       if(!r.success) return { content:[{ type:"text", text:`Error: ${r.error}` }] };
       
-      const summary = JSON.parse(r.result!);
+      const summary = eval(r.result!);
       
       // Log scenario summary as changeSummary patches
       const summaryPatches = [
@@ -817,14 +827,28 @@ async function handleInspectFrameBounds(args: any): Promise<{ content: TextConte
     
     var page = doc.pages[${pageNumber} - 1];  // Convert to 0-based index
     var info = [];
-    
+
+    // Helper to test intersection
+    function intersects(b){
+      var y1=b[0], x1=b[1], y2=b[2], x2=b[3];
+      var py1=page.bounds[0], px1=page.bounds[1], py2=page.bounds[2], px2=page.bounds[3];
+      return !(x2 < px1 || x1 > px2 || y2 < py1 || y1 > py2);
+    }
+
+    var allFrames = doc.textFrames.everyItem().getElements();
+    var hit = [];
+    for(var ai=0;ai<allFrames.length;ai++){
+      var fr=allFrames[ai];
+      try{ if(intersects(fr.geometricBounds)){ hit.push(fr); } }catch(e){}
+    }
+
     info.push("=== Text Frame Bounds on Page " + ${pageNumber} + " ===");
     info.push("");
-    info.push("Total text frames on this page: " + page.textFrames.length);
+    info.push("Total text frames intersecting this page: " + hit.length);
     info.push("");
     
-    for (var i = 0; i < page.textFrames.length; i++) {
-      var frame = page.textFrames[i];
+    for (var i = 0; i < hit.length; i++) {
+      var frame = hit[i];
       var bounds = frame.geometricBounds;  // [y1, x1, y2, x2]
       
       var frameInfo = "Frame " + i + ":";

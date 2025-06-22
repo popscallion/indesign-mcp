@@ -27,8 +27,10 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
     "apply_paragraph_style",
     {
       style_name: z.string().describe("Name of the paragraph style to apply"),
-      target_text: z.string().default("").describe("Text to find and apply style to (optional - if not provided, applies to current selection)"),
-      all_occurrences: z.boolean().default(false).describe("Apply to all occurrences of target_text")
+      target_text: z.string().default("").describe("Text to find and apply style to (optional)"),
+      all_occurrences: z.boolean().default(false).describe("Apply to all occurrences of target_text"),
+      story_index: z.number().optional().describe("Story index to apply style to (0-based). Overrides selection if provided"),
+      paragraph_range: z.string().optional().describe("Paragraph range within the story (e.g. '1-3' or '5')")
     },
     async (args) => {
       return await handleApplyParagraphStyle(args);
@@ -157,6 +159,8 @@ async function handleApplyParagraphStyle(args: any): Promise<{ content: TextCont
   const styleName = escapeExtendScriptString(args.style_name);
   const targetText = args.target_text ? escapeExtendScriptString(args.target_text) : "";
   const allOccurrences = args.all_occurrences || false;
+  const storyIndex = typeof args.story_index === "number" ? args.story_index : -1;
+  const paragraphRange = args.paragraph_range ? escapeExtendScriptString(args.paragraph_range) : "";
   
   const script = `
     if (app.documents.length === 0) {
@@ -183,7 +187,29 @@ async function handleApplyParagraphStyle(args: any): Promise<{ content: TextCont
     
     var appliedCount = 0;
     
-    if ("${targetText}" === "") {
+    if (${storyIndex} >= 0) {
+      // Apply to an entire story or range without selection
+      if (app.documents.length === 0) { throw new Error('No active doc'); }
+      var s = doc.stories[${storyIndex}];
+      if (!s) { throw new Error('Story index out of range'); }
+      var paraIndices = [];
+      if ("${paragraphRange}" !== "") {
+        if ("${paragraphRange}".indexOf('-') !== -1) {
+          var pr = "${paragraphRange}".split('-');
+          var start = parseInt(pr[0],10)-1; var end = parseInt(pr[1],10)-1;
+          for(var pi=start; pi<=end; pi++){ paraIndices.push(pi); }
+        } else { paraIndices.push(parseInt("${paragraphRange}",10)-1); }
+      } else {
+        for(var pi=0; pi<s.paragraphs.length; pi++){ paraIndices.push(pi); }
+      }
+      for(var k=0;k<paraIndices.length;k++){
+        var idx = paraIndices[k];
+        if (idx>=0 && idx < s.paragraphs.length) {
+          s.paragraphs[idx].appliedParagraphStyle = targetStyle;
+          appliedCount++;
+        }
+      }
+    } else if ("${targetText}" === "") {
       // Apply to current selection
       if (app.selection.length > 0 && app.selection[0].hasOwnProperty("paragraphs")) {
         var selection = app.selection[0];
@@ -192,7 +218,7 @@ async function handleApplyParagraphStyle(args: any): Promise<{ content: TextCont
           appliedCount++;
         }
       } else {
-        throw new Error("No text selection found. Please select text or provide target_text parameter.");
+        throw new Error("No text selection found. Provide target_text or story_index/paragraph_range.");
       }
     } else {
       // Find and apply to specific text
