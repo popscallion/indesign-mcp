@@ -8,7 +8,7 @@ Currently implements 35 tools across 8 categories:
 
 - **Text Operations** (4): Add, update, remove, and extract text content
 - **Style Management** (7): Create and apply paragraph/character styles, text selection
-- **Layout Control** (2): Position and create text frames with enhanced workflow guidance
+- **Layout Control** (3): Position and create text frames with enhanced workflow guidance
 - **Page Management** (3): Add, remove, inspect pages, get dimensions  
 - **Document Operations** (6): Export, save, import content, place files, preview generation
 - **Object Transformation** (3): Transform, duplicate, and align objects
@@ -51,7 +51,9 @@ Make sure InDesign is running with a document open before using the tools.
 ```bash
 npm run build      # Compile TypeScript
 npm start          # Run the server
-npm run dev        # Development mode (if available)
+npm run dev        # Development mode with watch
+npm test           # Run unit tests
+npm run lint       # Run ESLint
 ```
 
 ## Status

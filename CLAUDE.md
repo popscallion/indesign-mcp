@@ -13,30 +13,16 @@ Building an **AI-driven InDesign automation platform** using TypeScript MCP (Mod
 2. **Add-Content** – Flow new text into existing documents while preserving design
 
 ## 📌 Current Development Focus
-Based on PRD analysis and TODO.md status:
+All core functionality is complete. Current challenge: **Improving LLM Decision-Making**
 
-### High Priority Tasks
-1. **PRD-01 M2**: Enhance `document_snapshot` resource with:
-   - Text threading relationships between frames
-   - Overset detection flags per story
-   - Content samples (first 200 chars) for each text frame
-   
-2. **PRD-01 M3**: Implement `preview_page` PNG rendering
-   - Generate visual previews of InDesign pages
-   - Return as base64-encoded PNG via MCP resource
+### Primary Challenge
+**LLM Tool Usage Optimization**: While all MCP tools execute successfully, LLMs often make poor strategic decisions about which tools to use, when to use them, and with what parameters. This results in layouts that diverge from reference images despite technical success.
 
-### Medium Priority Tasks
-3. **PRD-04**: Formal change tracking system
-   - Implement JSON-Patch based changeSummary emission
-   - Add server.log integration for all mutating tools
-   
-4. **Testing Infrastructure**: 
-   - Unit tests for style_catalog & snapshot resources
-   - SDK test client integration
-
-### Low Priority Tasks
-5. Remove legacy magazine/report prompts (PRD-03 Phase C)
-6. Add CI script for automated testing
+### Active Work Areas
+1. **Testing Loop Automation**: Developing faster, automated ways to detect when LLM tool usage goes wrong
+2. **Decision Forensics**: Creating diagnostics to identify which tool choices or parameters cause layout failures  
+3. **Validation Enhancement**: Improving layout validation rules to catch visual problems early
+4. **Prompt Engineering**: Refining constraints and intermediate validation steps
 
 ## 📁 Project Structure
 ```
@@ -47,15 +33,11 @@ indesign-mcp/                    # Main TypeScript MCP project
 │   ├── types.ts                 # TypeScript type definitions
 │   ├── tools/                   # Tool implementations (8 categories)
 │   └── prompts/                 # Strategic workflow prompts
+├── docs/                        # Documentation and API references
+│   └── InDesign ExtendScript_API_Adob_InDesign_2025/  # Complete InDesign API docs
+├── tests/                       # Unit and integration tests
 ├── dist/                        # Compiled JavaScript
 └── package.json                 # Dependencies & scripts
-
-archive/                         # Archived Python version
-└── python-indesign-mcp/        # Original Python implementation
-
-docs/                            # Documentation and API references
-└── InDesign ExtendScript_API_Adob_InDesign_2025/  # Complete InDesign API docs
-
 ```
 
 ## Development Commands
@@ -66,11 +48,14 @@ npm run build        # Compile TypeScript to dist/
 npm start           # Run MCP server (uses tsx)
 npm run dev         # Development mode with watch
 
+# Testing and validation
+npm test            # Run unit tests with Jest
+npm run lint        # Run ESLint on TypeScript files
+npm run lint:fix    # Auto-fix ESLint issues
+
 # Validation
 npm run build && npm start    # Validate compilation and server startup
 ```
-
-**Note**: No `npm run lint` or test commands currently configured in package.json.
 
 ## 📋 Git Workflow
 
@@ -127,7 +112,7 @@ This MCP server bridges AI assistants with Adobe InDesign via **ExtendScript aut
 
 ### Testing Requirements
 - Test each tool with empty document and complex document
-- Verify no regressions in existing 34 tools
+- Verify no regressions in existing 35 tools
 - Integration testing for cross-tool workflows
 
 ## 🧪 Testing Strategy
@@ -181,11 +166,14 @@ Keep these test documents ready:
 - **Export/Import Tools** (6): document export, save, import content, place files, preview
 - **Transform Tools** (3): object transformation, duplication, alignment
 
-### 🎯 Next Priority: AI visual feedback testing
-1. Manual test scenario
+### 🎯 Current Priority: LLM Decision-Making Optimization
+1. **Automated testing loops**: Reduce manual validation overhead
+2. **Decision pattern analysis**: Identify common LLM mistakes in tool usage
+3. **Enhanced validation rules**: Catch layout problems before they cascade
+4. **Prompt refinement**: Guide LLMs toward better strategic decisions
 
-### Later enhancements: Tier 2+ tools (remaining tools)
-Focus areas for continued expansion:
+### Future Enhancements
+Focus areas for potential expansion:
 1. **Advanced Text Operations**: find/replace, spell check, typography
 2. **Image Management**: image processing, effects, color management
 3. **Print Production**: color separation, preflighting, packaging
