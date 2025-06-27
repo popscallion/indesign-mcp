@@ -18,6 +18,14 @@ All core functionality is complete. Current challenge: **Improving LLM Decision-
 ### Primary Challenge
 **LLM Tool Usage Optimization**: While all MCP tools execute successfully, LLMs often make poor strategic decisions about which tools to use, when to use them, and with what parameters. This results in layouts that diverge from reference images despite technical success.
 
+**Important Context**: We use minimal Task agent prompts to expose MCP deficiencies. However, we must acknowledge that:
+- Some tasks may be fundamentally impossible without prompt engineering
+- The MCP might have inherent limitations that can't be overcome
+- Low scores don't necessarily mean the system is broken
+- Success might require accepting some level of additional context
+
+The goal is to push the MCP as far as possible while being realistic about constraints.
+
 ### Active Work Areas
 1. **Evolutionary Testing System** (✅ Complete - Task-based): Built infrastructure using Claude Code's Task tool
 2. **Pattern Analysis** (✅ Complete): Algorithms to identify common failure patterns in tool usage
@@ -256,5 +264,11 @@ The evolutionary testing system automatically improves MCP tool descriptions bas
 
 ### Usage
 See `EVOLUTIONARY-TEST-PROGRESS.md` for detailed implementation status and `src/experimental/evolutionary/README-TASK-BASED.md` for the complete usage guide.
+
+**Note on Minimal Prompts**: Task agents receive only "Recreate this academic book page layout in InDesign using the available MCP tools" plus a reference. This intentionally minimal approach:
+- Avoids telling agents they're being tested (Hawthorne effect)
+- Exposes true MCP usability issues without masking them
+- Tests natural tool discovery without hand-holding
+- Reveals where the MCP needs improvement
 
 This guide provides Claude Code with essential project context for continuing InDesign MCP development efficiently.

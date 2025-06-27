@@ -105,10 +105,11 @@ async function testTaskBasedSetup() {
     const examplePrompt = runner.createTaskPrompt(config, 'test-agent-1');
     console.log('✓ Task prompt generated\n');
     
-    console.log('Example Task Prompt (first 500 chars):');
+    console.log('Example Task Prompt:');
     console.log('---');
-    console.log(examplePrompt.substring(0, 500) + '...');
+    console.log(examplePrompt);
     console.log('---\n');
+    console.log('Note: This minimal prompt intentionally avoids hand-holding to test MCP usability\n');
     
     // Simulate what would happen after Task completion
     console.log('6. Testing post-Task workflow...');

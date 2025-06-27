@@ -81,9 +81,9 @@ export async function exampleEvolutionWorkflow() {
     const prompt = runner.createTaskPrompt(config, agentId);
     
     console.log(`\n--- Launching ${agentId} ---`);
-    console.log('Claude Code would now use Task tool with this prompt:');
+    console.log('Claude Code would now use Task tool with this minimal prompt:');
     console.log('```');
-    console.log(prompt.substring(0, 500) + '...');
+    console.log(prompt);
     console.log('```');
     
     // ACTUAL CLAUDE CODE WORKFLOW:

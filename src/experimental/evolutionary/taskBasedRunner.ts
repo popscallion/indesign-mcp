@@ -58,61 +58,39 @@ export class TaskBasedRunner {
   
   /**
    * Create prompt for Task tool
+   * 
+   * DESIGN DECISION: Minimal prompt to test MCP usability
+   * We intentionally avoid:
+   * - Telling agents they're being tested (Hawthorne effect)
+   * - Providing detailed specifications (masks MCP deficiencies)
+   * - Listing process steps (pre-solves the problem)
+   * - Excessive hand-holding (prevents natural discovery)
+   * 
+   * This minimal approach reveals true MCP usability issues.
    */
   createTaskPrompt(config: TestConfig, agentId: string): string {
-    return `You are a Task agent in an evolutionary testing system. Your task is to recreate a document layout in InDesign based on a reference image.
-
-IMPORTANT: You are being observed to help improve the InDesign MCP tools. Every tool call you make is being recorded for analysis.
-
-Agent ID: ${agentId}
-Generation: ${config.generation}
-Test Case: ${config.testCase}
-
-IMPORTANT: This is a Task agent in the evolutionary testing system.
-Your tool usage is being analyzed to improve the InDesign MCP.
-
-Reference Image: ${config.referenceImage || 'A page from an academic book with the following characteristics:'}
-${config.referenceDescription || `
-- Document size: 5.125" x 7.75" (368.5pt x 552.75pt)
-- Margins: 0.5" top/bottom, 0.7" left/right
-- Main heading at top (larger font, possibly bold)
-- Body text below in smaller font
-- Consistent paragraph spacing
-- Professional typography
-`}
-
-Your Goal:
-Recreate this layout as accurately as possible using InDesign MCP tools.
-
-Key Aspects to Match:
-1. **Text Hierarchy**: Identify different text levels (headings, body text, captions) and their relative sizes
-2. **Positioning**: Match the placement of text frames and elements precisely
-3. **Typography**: Select appropriate font sizes and styles that match the visual weight
-4. **Spacing**: Reproduce margins, indentation, and line spacing accurately
-
-Process:
-1. First, examine the reference image/description carefully
-2. Create the document with appropriate dimensions
-3. Add text frames at the correct positions
-4. Create and apply paragraph styles for consistent formatting
-5. Add the text content with proper styling
-
-Available InDesign MCP Tools:
-- indesign_status: Check if document is open
-- create_textframe: Create text containers at specific positions
-- add_text: Add text content to the document
-- create_paragraph_style: Define reusable text formatting
-- apply_paragraph_style: Apply formatting to text
-- position_textframe: Adjust frame positions
-- get_document_text: Review your work
-- And many more...
-
-Remember:
-- Be precise with measurements (InDesign uses points: 72pt = 1 inch)
-- Create styles before applying them
-- Work systematically from document setup to details
-
-Begin by checking InDesign status, then proceed with recreation.`;
+    // Internal tracking (not shown to agent)
+    const metadata = {
+      agentId,
+      generation: config.generation,
+      testCase: config.testCase
+    };
+    console.log(`Creating prompt for ${agentId} (Gen ${config.generation})`);
+    
+    // Minimal prompt - just the task
+    let prompt = 'Recreate this academic book page layout in InDesign using the available MCP tools.\n\n';
+    
+    // Add reference - either image path or basic description
+    if (config.referenceImage) {
+      prompt += `Reference: ${config.referenceImage}`;
+    } else if (config.referenceDescription) {
+      prompt += `Reference: ${config.referenceDescription}`;
+    } else {
+      // Fallback minimal description
+      prompt += 'Reference: A typical academic book page with a heading and body text.';
+    }
+    
+    return prompt;
   }
   
   /**
