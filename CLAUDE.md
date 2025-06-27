@@ -73,7 +73,7 @@ npm run lint:fix    # Auto-fix ESLint issues
 npm run build && npm start    # Validate compilation and server startup
 
 # Evolutionary Testing (Task-based)
-npx tsx src/experimental/evolutionary/example-task-workflow.ts  # See example workflow
+npx tsx src/experimental/evolutionary/runEvolutionTest.ts  # Run the test orchestrator
 # Actual testing is done interactively using Claude Code's Task tool
 ```
 
@@ -81,7 +81,7 @@ npx tsx src/experimental/evolutionary/example-task-workflow.ts  # See example wo
 
 ### Current Setup
 - **Repository**: `indesign-mcp` on GitHub
-- **Main Branch**: `main` (35 working tools)
+- **Main Branch**: `main` (36+ working tools)
 - **Development**: Feature branches for tier implementation
 
 ### Branch Strategy
@@ -235,9 +235,11 @@ npm run build && npm start
 - `layout/` - Text frame positioning (2 tools)
 - `pages/` - Page management (3 tools)
 - `special/` - Layers, tables, special chars (4 tools)
-- `utility/` - Threading, flow management (6 tools)
+- `utility/` - Threading, flow management (6 tools + telemetry_end_session)
 - `export/` - Document export/import (6 tools) 
 - `transform/` - Object transformation (3 tools)
+- `composite/` - High-level workflow tools (3 tools)
+- `analysis/` - Decision tracking and metrics (4 tools)
 
 ## 🔄 Development Cycle
 1. **Plan**: Select 3 tools from priority list
@@ -255,15 +257,24 @@ The evolutionary testing system automatically improves MCP tool descriptions bas
 - **Phase 1-5**: ✅ Complete
 - **Architecture**: Simplified Task-based approach using Claude Code
 - **Cost**: Zero API costs - uses Task tool only
+- **O3 Fixes**: ✅ All critical issues resolved (config fallback, document safety, telemetry robustness)
+
+### Quick Start Guides
+For running the evolutionary testing system:
+- **Quick Start Guide**: `EVOLUTIONARY-TEST-QUICKSTART.md` - Comprehensive step-by-step instructions
+- **Checklist**: `EVOLUTIONARY-TEST-CHECKLIST.md` - Concise reference for quick execution
 
 ### Key Components
-- **Telemetry**: Captures all tool calls with parameters
+- **Telemetry**: Captures all tool calls with parameters (now with retry logic and queue management)
 - **SubAgents**: Uses Task tool to run real Claude instances
 - **Pattern Analysis**: Identifies common failure patterns
 - **Claude Code Analysis**: Direct pattern interpretation and improvement generation
 
 ### Usage
-See `EVOLUTIONARY-TEST-PROGRESS.md` for detailed implementation status and `src/experimental/evolutionary/README-TASK-BASED.md` for the complete usage guide.
+1. Start with the quick start guide for practical instructions
+2. Use the checklist for rapid execution
+3. See `EVOLUTIONARY-TEST-PROGRESS.md` for implementation details
+4. Reference `src/experimental/evolutionary/README-TASK-BASED.md` for conceptual overview
 
 **Note on Minimal Prompts**: Task agents receive only "Recreate this academic book page layout in InDesign using the available MCP tools" plus a reference. This intentionally minimal approach:
 - Avoids telling agents they're being tested (Hawthorne effect)

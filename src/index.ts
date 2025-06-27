@@ -43,6 +43,17 @@ async function createInDesignMcpServer(enableTelemetry: boolean = false): Promis
   // Set telemetry state
   setTelemetryEnabled(enableTelemetry);
   
+  // If telemetry is enabled, initialize and cleanup old files
+  if (enableTelemetry) {
+    const { TelemetryCapture } = await import('./tools/telemetry.js');
+    // Initialize telemetry directory
+    await TelemetryCapture.initializeTelemetryDir();
+    // Clean up old telemetry files (async, don't block startup)
+    TelemetryCapture.cleanupOldTelemetry().catch(error => {
+      console.error('Failed to cleanup old telemetry files:', error);
+    });
+  }
+  
   // Use telemetry-enabled server if requested
   const server = enableTelemetry ? createTelemetryServer(baseServer) : baseServer;
 

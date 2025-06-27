@@ -47,13 +47,22 @@ export class TelemetryCapture {
   // File-based telemetry
   private static telemetryDir: string | null = null;
   private static fileWriteQueue: Promise<void> = Promise.resolve();
+  private static pendingWrites: number = 0;
+  private static readonly FLUSH_THRESHOLD = 100; // Flush after 100 pending writes
   
   /**
    * Initialize telemetry directory
    */
   static async initializeTelemetryDir(): Promise<void> {
-    const config = getConfig();
-    this.telemetryDir = config.paths.telemetryDir;
+    try {
+      // Try to get config from evolutionary test system
+      const config = getConfig();
+      this.telemetryDir = config.paths.telemetryDir;
+    } catch (error) {
+      // Fallback to default directory if not in evolutionary test context
+      this.telemetryDir = path.join(process.cwd(), 'telemetry');
+      console.warn('Failed to get evolutionary test config, using fallback telemetry directory:', this.telemetryDir);
+    }
     
     // Ensure directory exists
     await fs.mkdir(this.telemetryDir, { recursive: true });
@@ -83,16 +92,76 @@ export class TelemetryCapture {
     const sessionId = call.sessionId || 'no-session';
     const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
     
+    // Increment pending writes counter
+    this.pendingWrites++;
+    
     // Queue the write to avoid race conditions
     this.fileWriteQueue = this.fileWriteQueue.then(async () => {
       try {
-        await fs.appendFile(filePath, JSON.stringify(call) + '\n', 'utf8');
+        await this.writeWithRetry(filePath, JSON.stringify(call) + '\n');
+        this.pendingWrites--;
       } catch (error) {
-        console.error(`Failed to persist telemetry: ${error}`);
+        console.error(`Failed to persist telemetry after retries: ${error}`);
+        this.pendingWrites--;
       }
     });
     
+    // Check if we need to flush the queue
+    if (this.pendingWrites >= this.FLUSH_THRESHOLD) {
+      await this.flushWriteQueue();
+    }
+    
     return this.fileWriteQueue;
+  }
+  
+  /**
+   * Flush the write queue to ensure all pending writes complete
+   */
+  private static async flushWriteQueue(): Promise<void> {
+    console.log(`Flushing telemetry write queue (${this.pendingWrites} pending writes)...`);
+    await this.fileWriteQueue;
+    console.log('Telemetry write queue flushed');
+  }
+  
+  /**
+   * Write to file with retry logic
+   */
+  private static async writeWithRetry(
+    filePath: string, 
+    data: string, 
+    maxRetries: number = 3
+  ): Promise<void> {
+    const delays = [100, 300, 900]; // Exponential backoff in ms
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await fs.appendFile(filePath, data, 'utf8');
+        return; // Success
+      } catch (error: any) {
+        const isRetryable = error.code === 'ENOENT' || 
+                          error.code === 'EBUSY' || 
+                          error.code === 'EACCES';
+        
+        if (!isRetryable || attempt === maxRetries) {
+          // Not retryable or out of retries
+          throw error;
+        }
+        
+        // Wait before retry
+        const delay = delays[attempt] || 1000;
+        console.warn(`Telemetry write failed (${error.code}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // For ENOENT, try to recreate the directory
+        if (error.code === 'ENOENT') {
+          try {
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+          } catch (mkdirError) {
+            // Ignore mkdir errors, will retry write anyway
+          }
+        }
+      }
+    }
   }
   
   /**
@@ -110,7 +179,12 @@ export class TelemetryCapture {
       sessionId
     };
     
-    await fs.appendFile(filePath, JSON.stringify(sentinel) + '\n', 'utf8');
+    try {
+      await this.writeWithRetry(filePath, JSON.stringify(sentinel) + '\n');
+    } catch (error) {
+      console.error(`Failed to write session completion sentinel after retries: ${error}`);
+      throw error; // Re-throw as this is critical for session completion
+    }
   }
   
   /**
@@ -229,7 +303,7 @@ export class TelemetryCapture {
   /**
    * Capture a tool call
    */
-  static async capture(toolName: string, params: any, result: { success: boolean; error?: string; executionTime: number }): Promise<void> {
+  static async capture(toolName: string, params: any, result: { success: boolean; error?: string; executionTime: number; data?: any }): Promise<void> {
     const call: ToolCall = {
       timestamp: Date.now(),
       tool: toolName,
@@ -238,6 +312,11 @@ export class TelemetryCapture {
       result: result.success ? 'success' : 'error',
       errorMessage: result.error
     };
+    
+    // Sanitize result data if present
+    if (result.data) {
+      (call as any).resultData = this.sanitizeParams(result.data);
+    }
     
     // Add session metadata if available
     if (this.currentSession) {

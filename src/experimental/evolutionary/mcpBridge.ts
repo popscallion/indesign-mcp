@@ -103,37 +103,40 @@ export class McpBridge {
   async resetDocument(): Promise<void> {
     const script = `
       if (app.documents.length === 0) {
-        throw new Error("No documents are open in InDesign.");
-      }
-      
-      var doc = app.activeDocument;
-      
-      // Clear all page items (more thorough than just text frames)
-      for (var p = doc.pages.length - 1; p >= 0; p--) {
-        var page = doc.pages[p];
+        // Create a new document if none exists
+        var defaultPreset = app.documentPresets[0]; // Use default preset
+        var doc = app.documents.add(defaultPreset);
+        "Created new document";
+      } else {
+        var doc = app.activeDocument;
         
-        // Remove all page items (includes text frames, images, shapes, etc.)
-        for (var i = page.allPageItems.length - 1; i >= 0; i--) {
+        // Clear all page items (more thorough than just text frames)
+        for (var p = doc.pages.length - 1; p >= 0; p--) {
+          var page = doc.pages[p];
+          
+          // Remove all page items (includes text frames, images, shapes, etc.)
+          for (var i = page.allPageItems.length - 1; i >= 0; i--) {
+            try {
+              page.allPageItems[i].remove();
+            } catch (e) {
+              // Some items might be locked or on master pages
+            }
+          }
+        }
+        
+        // Also clear stories that might not be in frames
+        for (var s = doc.stories.length - 1; s >= 0; s--) {
           try {
-            page.allPageItems[i].remove();
+            if (doc.stories[s].textContainers.length === 0) {
+              doc.stories[s].contents = "";
+            }
           } catch (e) {
-            // Some items might be locked or on master pages
+            // Some stories might be protected
           }
         }
+        
+        "Document cleared successfully";
       }
-      
-      // Also clear stories that might not be in frames
-      for (var s = doc.stories.length - 1; s >= 0; s--) {
-        try {
-          if (doc.stories[s].textContainers.length === 0) {
-            doc.stories[s].contents = "";
-          }
-        } catch (e) {
-          // Some stories might be protected
-        }
-      }
-      
-      "Document cleared successfully";
     `;
     
     const result = await executeExtendScript(script);

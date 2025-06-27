@@ -13,6 +13,40 @@ import type { FrameScope, TextFlowAction } from "../../types.js";
  * Registers advanced utility tools with the MCP server
  */
 export async function registerUtilityTools(server: McpServer): Promise<void> {
+  // Register telemetry_end_session tool (for Task agents in evolutionary testing)
+  server.tool(
+    "telemetry_end_session",
+    {},
+    async () => {
+      try {
+        const { TelemetryCapture } = await import('../telemetry.js');
+        const session = await TelemetryCapture.endSession();
+        
+        if (session) {
+          return {
+            content: [{
+              type: "text",
+              text: `Telemetry session ended successfully. Session ID: ${session.id}, Tool calls captured: ${session.calls.length}`
+            }]
+          };
+        } else {
+          return {
+            content: [{
+              type: "text",
+              text: "No active telemetry session to end."
+            }]
+          };
+        }
+      } catch (error) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error ending telemetry session: ${error instanceof Error ? error.message : String(error)}`
+          }]
+        };
+      }
+    }
+  );
   // Register thread_text_frames tool
   server.tool(
     "thread_text_frames",

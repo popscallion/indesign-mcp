@@ -57,7 +57,8 @@ export function wrapToolForTelemetry<T extends Record<string, any>>(
       // Capture successful execution (async but don't await to avoid blocking)
       await TelemetryCapture.capture(toolName, args, {
         success: true,
-        executionTime: Date.now() - startTime
+        executionTime: Date.now() - startTime,
+        data: result // Include result data for sanitization
       });
       
       return result;

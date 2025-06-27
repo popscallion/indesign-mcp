@@ -101,6 +101,9 @@ export class TaskBasedRunner {
       prompt += 'Reference: A typical academic book page with a heading and body text.';
     }
     
+    // Add telemetry session ending instruction
+    prompt += '\n\nIMPORTANT: When you have completed the layout recreation, call the "telemetry_end_session" tool to properly finalize the telemetry data collection.';
+    
     return prompt;
   }
   
