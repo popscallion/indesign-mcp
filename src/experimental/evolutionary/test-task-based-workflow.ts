@@ -96,7 +96,7 @@ async function testTaskBasedSetup() {
       targetScore: 85,
       improvementThreshold: 5,
       referenceMetrics: BOOK_PAGE_REFERENCE,
-      referenceImage: '/path/to/book-page.jpg',
+      referenceImage: 'tests/decision-analysis/reference-images/book-page.jpg',
       referenceDescription: 'Academic book page with heading and body text'
     };
     

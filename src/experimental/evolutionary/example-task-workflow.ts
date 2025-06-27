@@ -58,7 +58,7 @@ export async function exampleEvolutionWorkflow() {
       styles: [],
       textRegions: []
     },
-    referenceImage: '/path/to/reference/book-page.jpg',
+    referenceImage: 'tests/decision-analysis/reference-images/book-page.jpg',
     referenceDescription: `Academic book page with:
     - 5.125" x 7.75" document
     - Clear heading at top
