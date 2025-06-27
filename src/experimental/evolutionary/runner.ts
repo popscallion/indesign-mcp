@@ -92,7 +92,7 @@ export class EvolutionaryTestRunner {
         console.error(`${agentId} unexpected error:`, error);
         
         // This should rarely happen since runSingleAgent catches errors
-        const telemetry = TelemetryCapture.endSession() || { 
+        const telemetry = await TelemetryCapture.endSession() || { 
           id: `failed-${agentId}-${Date.now()}`, 
           startTime: Date.now(), 
           agentId, 

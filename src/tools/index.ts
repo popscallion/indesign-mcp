@@ -54,17 +54,17 @@ export function wrapToolForTelemetry<T extends Record<string, any>>(
     try {
       const result = await handler(args);
       
-      // Capture successful execution
-      TelemetryCapture.capture(toolName, args, {
+      // Capture successful execution (async but don't await to avoid blocking)
+      await TelemetryCapture.capture(toolName, args, {
         success: true,
         executionTime: Date.now() - startTime
       });
       
       return result;
     } catch (error) {
-      // Capture error
+      // Capture error (async but don't await to avoid blocking on error path)
       const errorMessage = error instanceof Error ? error.message : String(error);
-      TelemetryCapture.capture(toolName, args, {
+      await TelemetryCapture.capture(toolName, args, {
         success: false,
         error: errorMessage,
         executionTime: Date.now() - startTime

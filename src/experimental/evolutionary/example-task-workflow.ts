@@ -78,7 +78,8 @@ export async function exampleEvolutionWorkflow() {
     const agentId = `agent-${i + 1}`;
     
     // Create prompt
-    const prompt = runner.createTaskPrompt(config, agentId);
+    const sessionId = runner.generateSessionId(agentId, config.generation);
+    const prompt = runner.createTaskPrompt(config, agentId, sessionId);
     
     console.log(`\n--- Launching ${agentId} ---`);
     console.log('Claude Code would now use Task tool with this minimal prompt:');
@@ -97,7 +98,7 @@ export async function exampleEvolutionWorkflow() {
     console.log('[Task completed - document has been modified]');
     
     // After Task completes, collect metrics (not telemetry)
-    const telemetry = await runner.collectTaskTelemetry(agentId);
+    const telemetry = await runner.collectTaskTelemetry(agentId, sessionId);
     
     if (telemetry) {
       // Process the results

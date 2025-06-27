@@ -74,7 +74,7 @@ export class SubAgentExecutor extends EventEmitter {
     const startTime = Date.now();
     
     // Start telemetry session here, not in startMcpServer
-    const sessionId = TelemetryCapture.startSession(config.agentId, config.generation);
+    const sessionId = await TelemetryCapture.startSession(config.agentId, config.generation);
     
     try {
       // Start telemetry-enabled MCP server (without starting another session)
@@ -84,7 +84,7 @@ export class SubAgentExecutor extends EventEmitter {
       const result = await this.runAgent(config);
       
       // End telemetry session and save it
-      const telemetry = TelemetryCapture.endSession();
+      const telemetry = await TelemetryCapture.endSession();
       if (telemetry) {
         this.lastSession = telemetry;
       }
@@ -96,7 +96,7 @@ export class SubAgentExecutor extends EventEmitter {
       };
     } catch (error) {
       // End telemetry session even on error
-      const telemetry = TelemetryCapture.endSession();
+      const telemetry = await TelemetryCapture.endSession();
       if (telemetry) {
         this.lastSession = telemetry;
       }

@@ -27,19 +27,35 @@ export class PatternAnalyzer {
   analyzePatterns(runs: TestRun[]): Pattern[] {
     const patterns: Pattern[] = [];
     
+    // Guard against empty runs
+    if (!runs || runs.length === 0) {
+      console.log('No runs available for pattern analysis');
+      return patterns;
+    }
+    
     // Skip if insufficient data
     if (runs.length < this.minFrequency) {
       console.log(`Insufficient runs (${runs.length}) for pattern analysis`);
       return patterns;
     }
     
-    // Analyze different pattern types
-    patterns.push(...this.findToolSequencePatterns(runs));
-    patterns.push(...this.findParameterChoicePatterns(runs));
-    patterns.push(...this.findErrorPatterns(runs));
+    // Check if we have telemetry data
+    const hasTelemetry = runs.some(r => r.telemetry && r.telemetry.calls && r.telemetry.calls.length > 0);
+    
+    if (hasTelemetry) {
+      console.log('✓ Telemetry data available - performing full pattern analysis');
+      // Analyze tool-based patterns
+      patterns.push(...this.findToolSequencePatterns(runs));
+      patterns.push(...this.findParameterChoicePatterns(runs));
+      patterns.push(...this.findErrorPatterns(runs));
+      patterns.push(...this.findMissingToolPatterns(runs));
+      patterns.push(...this.findRedundantCallPatterns(runs));
+    } else {
+      console.log('⚠️  No telemetry data - analyzing layout deviations only');
+    }
+    
+    // Always analyze visual deviations (doesn't require telemetry)
     patterns.push(...this.findVisualDeviationPatterns(runs));
-    patterns.push(...this.findMissingToolPatterns(runs));
-    patterns.push(...this.findRedundantCallPatterns(runs));
     
     // Filter by minimum frequency and confidence
     return patterns.filter(p => 
@@ -55,11 +71,17 @@ export class PatternAnalyzer {
     const patterns: Pattern[] = [];
     const sequenceMap = new Map<string, PatternExample[]>();
     
+    // Skip if no telemetry
+    const runsWithTelemetry = runs.filter(r => r.telemetry?.calls?.length > 0);
+    if (runsWithTelemetry.length === 0) {
+      return patterns;
+    }
+    
     // Optimization: Only track sequences that appear at least twice
     const frequentSequences = new Map<string, number>();
     
     // First pass: Count sequences to identify frequent ones
-    runs.forEach(run => {
+    runsWithTelemetry.forEach(run => {
       const toolSequence = this.extractToolSequence(run.telemetry);
       const seenInThisRun = new Set<string>();
       

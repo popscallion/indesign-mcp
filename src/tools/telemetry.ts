@@ -3,6 +3,10 @@
  * Captures all tool calls, parameters, and results for analysis
  */
 
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { getConfig } from '../experimental/evolutionary/config.js';
+
 /**
  * Tool call telemetry data structure
  */
@@ -40,16 +44,87 @@ export class TelemetryCapture {
   private static sessions: Map<string, TelemetrySession> = new Map();
   private static inSession: boolean = false;
   
+  // File-based telemetry
+  private static telemetryDir: string | null = null;
+  private static fileWriteQueue: Promise<void> = Promise.resolve();
+  
+  /**
+   * Initialize telemetry directory
+   */
+  static async initializeTelemetryDir(): Promise<void> {
+    const config = getConfig();
+    this.telemetryDir = config.paths.telemetryDir;
+    
+    // Ensure directory exists
+    await fs.mkdir(this.telemetryDir, { recursive: true });
+  }
+  
+  /**
+   * Get or set session ID from environment (for Task agent coherence)
+   */
+  static getOrCreateSessionId(agentId: string, generation: number): string {
+    // Check if session ID was passed via environment
+    if (process.env.EVOLUTION_SESSION_ID) {
+      return process.env.EVOLUTION_SESSION_ID;
+    }
+    
+    // Otherwise create a new one
+    return `${Date.now()}-${agentId}-gen${generation}`;
+  }
+  
+  /**
+   * Persist a tool call to file (JSONL format)
+   */
+  private static async persistCall(call: ToolCall): Promise<void> {
+    if (!this.telemetryDir) {
+      await this.initializeTelemetryDir();
+    }
+    
+    const sessionId = call.sessionId || 'no-session';
+    const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
+    
+    // Queue the write to avoid race conditions
+    this.fileWriteQueue = this.fileWriteQueue.then(async () => {
+      try {
+        await fs.appendFile(filePath, JSON.stringify(call) + '\n', 'utf8');
+      } catch (error) {
+        console.error(`Failed to persist telemetry: ${error}`);
+      }
+    });
+    
+    return this.fileWriteQueue;
+  }
+  
+  /**
+   * Write session completion sentinel
+   */
+  static async writeSessionComplete(sessionId: string): Promise<void> {
+    if (!this.telemetryDir) {
+      await this.initializeTelemetryDir();
+    }
+    
+    const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
+    const sentinel = {
+      type: 'session-complete',
+      timestamp: Date.now(),
+      sessionId
+    };
+    
+    await fs.appendFile(filePath, JSON.stringify(sentinel) + '\n', 'utf8');
+  }
+  
   /**
    * Start a new telemetry session
    */
-  static startSession(agentId: string, generation: number): string {
+  static async startSession(agentId: string, generation: number): Promise<string> {
     if (this.inSession) {
       console.warn('Warning: Attempted to start session while another is active. Ending previous session.');
-      this.endSession();
+      await this.endSession();
     }
     
-    const sessionId = `${Date.now()}-${agentId}-gen${generation}`;
+    // Use coherent session ID (from env or generate)
+    const sessionId = this.getOrCreateSessionId(agentId, generation);
+    
     this.currentSession = {
       id: sessionId,
       startTime: Date.now(),
@@ -60,18 +135,25 @@ export class TelemetryCapture {
     this.sessions.set(sessionId, this.currentSession);
     this.calls = [];
     this.inSession = true;
+    
+    // Initialize telemetry directory if needed
+    await this.initializeTelemetryDir();
+    
     return sessionId;
   }
   
   /**
    * End the current telemetry session
    */
-  static endSession(): TelemetrySession | null {
+  static async endSession(): Promise<TelemetrySession | null> {
     if (!this.currentSession || !this.inSession) return null;
     
     this.currentSession.endTime = Date.now();
     this.currentSession.calls = [...this.calls];
     const session = this.currentSession;
+    
+    // Write session completion sentinel
+    await this.writeSessionComplete(session.id);
     
     // Reset for next session
     this.currentSession = null;
@@ -147,7 +229,7 @@ export class TelemetryCapture {
   /**
    * Capture a tool call
    */
-  static capture(toolName: string, params: any, result: { success: boolean; error?: string; executionTime: number }) {
+  static async capture(toolName: string, params: any, result: { success: boolean; error?: string; executionTime: number }): Promise<void> {
     const call: ToolCall = {
       timestamp: Date.now(),
       tool: toolName,
@@ -165,6 +247,9 @@ export class TelemetryCapture {
     }
     
     this.calls.push(call);
+    
+    // Persist to file immediately
+    await this.persistCall(call);
   }
   
   /**
@@ -257,6 +342,98 @@ export class TelemetryCapture {
   }
   
   /**
+   * Read telemetry from file (JSONL format)
+   */
+  static async readSessionFromFile(sessionId: string): Promise<TelemetrySession | null> {
+    if (!this.telemetryDir) {
+      await this.initializeTelemetryDir();
+    }
+    
+    const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
+    
+    try {
+      const content = await fs.readFile(filePath, 'utf8');
+      const lines = content.trim().split('\n');
+      
+      const calls: ToolCall[] = [];
+      let sessionComplete = false;
+      let startTime: number | null = null;
+      let endTime: number | null = null;
+      let agentId = '';
+      let generation = 0;
+      
+      for (const line of lines) {
+        if (!line) continue;
+        
+        try {
+          const data = JSON.parse(line);
+          
+          if (data.type === 'session-complete') {
+            sessionComplete = true;
+            endTime = data.timestamp;
+          } else {
+            // It's a tool call
+            calls.push(data);
+            
+            if (!startTime) {
+              startTime = data.timestamp;
+              agentId = data.agentId || '';
+              generation = data.generation || 0;
+            }
+            endTime = data.timestamp;
+          }
+        } catch (e) {
+          console.warn(`Failed to parse telemetry line: ${line}`);
+        }
+      }
+      
+      if (calls.length === 0) {
+        return null;
+      }
+      
+      return {
+        id: sessionId,
+        startTime: startTime || Date.now(),
+        endTime: endTime || Date.now(),
+        agentId,
+        generation,
+        calls
+      };
+    } catch (error) {
+      // File doesn't exist or other error
+      return null;
+    }
+  }
+  
+  /**
+   * Wait for session completion sentinel
+   */
+  static async waitForSessionComplete(sessionId: string, timeout: number = 30000): Promise<boolean> {
+    if (!this.telemetryDir) {
+      await this.initializeTelemetryDir();
+    }
+    
+    const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeout) {
+      try {
+        const content = await fs.readFile(filePath, 'utf8');
+        if (content.includes('"type":"session-complete"')) {
+          return true;
+        }
+      } catch (e) {
+        // File might not exist yet
+      }
+      
+      // Wait a bit before checking again
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    return false;
+  }
+  
+  /**
    * Export telemetry data as JSON
    */
   static export(): string {
@@ -340,5 +517,33 @@ export class TelemetryCapture {
     }
     
     return result;
+  }
+  
+  /**
+   * Clean up old telemetry files
+   */
+  static async cleanupOldTelemetry(maxAgeMs: number = 24 * 60 * 60 * 1000): Promise<void> {
+    if (!this.telemetryDir) {
+      await this.initializeTelemetryDir();
+    }
+    
+    try {
+      const files = await fs.readdir(this.telemetryDir!);
+      const now = Date.now();
+      
+      for (const file of files) {
+        if (!file.endsWith('.jsonl')) continue;
+        
+        const filePath = path.join(this.telemetryDir!, file);
+        const stats = await fs.stat(filePath);
+        
+        if (now - stats.mtimeMs > maxAgeMs) {
+          await fs.unlink(filePath);
+          console.log(`Cleaned up old telemetry file: ${file}`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to cleanup telemetry files:', error);
+    }
   }
 }

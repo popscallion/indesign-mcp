@@ -25,7 +25,17 @@ export class McpBridge {
   async initialize(enableTelemetry: boolean = false): Promise<void> {
     this.telemetryEnabled = enableTelemetry;
     
-    // Capture tool handlers during server creation
+    // CRITICAL: Set telemetry BEFORE creating server
+    const { setTelemetryEnabled } = await import('../../tools/index.js');
+    setTelemetryEnabled(enableTelemetry);
+    
+    // Initialize telemetry directory early
+    if (enableTelemetry) {
+      const { TelemetryCapture } = await import('../../tools/telemetry.js');
+      await TelemetryCapture.initializeTelemetryDir();
+    }
+    
+    // Now capture tool handlers with telemetry already enabled
     await this.captureToolHandlers();
   }
   
@@ -85,6 +95,54 @@ export class McpBridge {
       console.error('Failed to check InDesign status:', e);
       throw e;
     }
+  }
+  
+  /**
+   * Reset InDesign document to clean state
+   */
+  async resetDocument(): Promise<void> {
+    const script = `
+      if (app.documents.length === 0) {
+        throw new Error("No documents are open in InDesign.");
+      }
+      
+      var doc = app.activeDocument;
+      
+      // Clear all page items (more thorough than just text frames)
+      for (var p = doc.pages.length - 1; p >= 0; p--) {
+        var page = doc.pages[p];
+        
+        // Remove all page items (includes text frames, images, shapes, etc.)
+        for (var i = page.allPageItems.length - 1; i >= 0; i--) {
+          try {
+            page.allPageItems[i].remove();
+          } catch (e) {
+            // Some items might be locked or on master pages
+          }
+        }
+      }
+      
+      // Also clear stories that might not be in frames
+      for (var s = doc.stories.length - 1; s >= 0; s--) {
+        try {
+          if (doc.stories[s].textContainers.length === 0) {
+            doc.stories[s].contents = "";
+          }
+        } catch (e) {
+          // Some stories might be protected
+        }
+      }
+      
+      "Document cleared successfully";
+    `;
+    
+    const result = await executeExtendScript(script);
+    
+    if (!result.success) {
+      throw new Error(`Failed to reset document: ${result.error}`);
+    }
+    
+    console.log('✓ Document reset to clean state');
   }
   
   /**

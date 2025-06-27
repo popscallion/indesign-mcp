@@ -57,6 +57,13 @@ export class TaskBasedRunner {
   }
   
   /**
+   * Generate a unique session ID for Task agent coherence
+   */
+  generateSessionId(agentId: string, generation: number): string {
+    return `${Date.now()}-${agentId}-gen${generation}`;
+  }
+  
+  /**
    * Create prompt for Task tool
    * 
    * DESIGN DECISION: Minimal prompt to test MCP usability
@@ -68,14 +75,18 @@ export class TaskBasedRunner {
    * 
    * This minimal approach reveals true MCP usability issues.
    */
-  createTaskPrompt(config: TestConfig, agentId: string): string {
+  createTaskPrompt(config: TestConfig, agentId: string, sessionId: string): string {
+    // Set session ID in environment for Task agent coherence
+    process.env.EVOLUTION_SESSION_ID = sessionId;
+    
     // Internal tracking (not shown to agent)
     const metadata = {
       agentId,
       generation: config.generation,
-      testCase: config.testCase
+      testCase: config.testCase,
+      sessionId
     };
-    console.log(`Creating prompt for ${agentId} (Gen ${config.generation})`);
+    console.log(`Creating prompt for ${agentId} (Gen ${config.generation}, Session: ${sessionId})`);
     
     // Minimal prompt - just the task
     let prompt = 'Recreate this academic book page layout in InDesign using the available MCP tools.\n\n';
@@ -96,31 +107,41 @@ export class TaskBasedRunner {
   /**
    * Handle post-Task telemetry collection
    * 
-   * IMPORTANT: In the Task-based approach, telemetry collection works differently:
-   * 1. Task agents run in separate Claude instances via Task tool
-   * 2. They cannot directly write to our telemetry system
-   * 3. Instead, we must parse their output or use other strategies
-   * 
-   * Current approach: After Task completes, we extract metrics and compare
-   * Future enhancement: Parse Task agent output for tool call details
+   * With file-based telemetry, Task agents write to JSONL files
+   * that we can read after completion.
    */
-  async collectTaskTelemetry(agentId: string): Promise<TelemetrySession | null> {
-    console.log(`\nCollecting telemetry for ${agentId}...`);
+  async collectTaskTelemetry(agentId: string, sessionId: string): Promise<TelemetrySession | null> {
+    console.log(`\nCollecting telemetry for ${agentId} (Session: ${sessionId})...`);
     
-    // In Task-based approach, we create a synthetic telemetry session
-    // based on the results we can observe
-    const session: TelemetrySession = {
-      id: `task-${agentId}-${Date.now()}`,
-      startTime: Date.now(),
-      endTime: Date.now(),
-      agentId,
-      generation: this.currentGeneration,
-      calls: [] // Tool calls would need to be parsed from Task output
-    };
+    // Wait for session completion sentinel
+    const { TelemetryCapture } = await import('../../tools/telemetry.js');
+    const completed = await TelemetryCapture.waitForSessionComplete(sessionId, 30000);
     
-    // Save the synthetic session
+    if (!completed) {
+      console.warn(`⚠️  Session completion sentinel not found for ${sessionId}`);
+      // Continue anyway - agent might have crashed
+    }
+    
+    // Read telemetry from file
+    const session = await TelemetryCapture.readSessionFromFile(sessionId);
+    
+    if (!session) {
+      console.warn(`⚠️  No telemetry data found for ${sessionId}`);
+      // Create synthetic session as fallback
+      return {
+        id: sessionId,
+        startTime: Date.now(),
+        endTime: Date.now(),
+        agentId,
+        generation: this.currentGeneration,
+        calls: []
+      };
+    }
+    
+    console.log(`✓ Task session loaded: ${session.calls.length} tool calls captured`);
+    
+    // Also save to persistence for consistency
     await this.persistence.saveSession(session);
-    console.log(`✓ Task session recorded for ${agentId}`);
     
     return session;
   }
@@ -154,8 +175,9 @@ export class TaskBasedRunner {
     console.log('Resetting InDesign state...');
     await this.mcpBridge.checkInDesignState();
     
-    // Note: We assume a document is already open
-    // In a full implementation, we might close and create a new document
+    // Clear document content
+    await this.mcpBridge.resetDocument();
+    
     console.log('✓ Ready for next agent');
   }
   

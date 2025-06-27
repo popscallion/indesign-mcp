@@ -102,7 +102,8 @@ async function testTaskBasedSetup() {
     
     // Generate example prompt
     console.log('5. Generating example Task prompt...');
-    const examplePrompt = runner.createTaskPrompt(config, 'test-agent-1');
+    const sessionId = runner.generateSessionId('test-agent-1', 1);
+    const examplePrompt = runner.createTaskPrompt(config, 'test-agent-1', sessionId);
     console.log('✓ Task prompt generated\n');
     
     console.log('Example Task Prompt:');
