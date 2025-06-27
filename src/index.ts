@@ -11,6 +11,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerAllInDesignTools } from "./tools/index.js";
 import { registerStrategicPrompts } from "./prompts/index.js";
 import { registerResources } from "./resources/index.js";
+import { createTelemetryServer } from "./tools/telemetryServer.js";
+import { setTelemetryEnabled } from "./tools/index.js";
 
 /**
  * Server configuration and identity
@@ -23,8 +25,8 @@ const SERVER_CONFIG = {
 /**
  * Creates and configures the MCP server instance with InDesign capabilities
  */
-async function createInDesignMcpServer(): Promise<McpServer> {
-  const server = new McpServer(
+async function createInDesignMcpServer(enableTelemetry: boolean = false): Promise<McpServer> {
+  const baseServer = new McpServer(
     { 
       name: SERVER_CONFIG.name, 
       version: SERVER_CONFIG.version 
@@ -38,6 +40,12 @@ async function createInDesignMcpServer(): Promise<McpServer> {
     }
   );
 
+  // Set telemetry state
+  setTelemetryEnabled(enableTelemetry);
+  
+  // Use telemetry-enabled server if requested
+  const server = enableTelemetry ? createTelemetryServer(baseServer) : baseServer;
+
   // Register all InDesign tools
   await registerAllInDesignTools(server);
   
@@ -49,6 +57,11 @@ async function createInDesignMcpServer(): Promise<McpServer> {
   
   return server;
 }
+
+/**
+ * Export for test runners to create telemetry-enabled servers
+ */
+export { createInDesignMcpServer };
 
 /**
  * Main server startup function

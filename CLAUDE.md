@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 🎯 Project Overview
 Building an **AI-driven InDesign automation platform** using TypeScript MCP (Model Context Protocol) server that bridges LLMs with Adobe InDesign via ExtendScript.
 
-**Current State**: Production-ready TypeScript MCP with 35 working tools + foundational resources/prompts
+**Current State**: Production-ready TypeScript MCP with 36 working tools + foundational resources/prompts
 **Goal**: Complete agentic workflow platform for two MVP scenarios:
 1. **Copy-Design** – Recreate reference page layouts from images
 2. **Add-Content** – Flow new text into existing documents while preserving design
@@ -19,10 +19,10 @@ All core functionality is complete. Current challenge: **Improving LLM Decision-
 **LLM Tool Usage Optimization**: While all MCP tools execute successfully, LLMs often make poor strategic decisions about which tools to use, when to use them, and with what parameters. This results in layouts that diverge from reference images despite technical success.
 
 ### Active Work Areas
-1. **Testing Loop Automation**: Developing faster, automated ways to detect when LLM tool usage goes wrong
-2. **Decision Forensics**: Creating diagnostics to identify which tool choices or parameters cause layout failures  
-3. **Validation Enhancement**: Improving layout validation rules to catch visual problems early
-4. **Prompt Engineering**: Refining constraints and intermediate validation steps
+1. **Evolutionary Testing System** (✅ Complete - Task-based): Built infrastructure using Claude Code's Task tool
+2. **Pattern Analysis** (✅ Complete): Algorithms to identify common failure patterns in tool usage
+3. **Improvement Generation** (✅ Complete): Claude Code directly analyzes patterns and proposes improvements
+4. **Evolution Loop** (✅ Complete): Semi-automated testing with Claude Code orchestration
 
 ## 📁 Project Structure
 ```
@@ -32,10 +32,18 @@ indesign-mcp/                    # Main TypeScript MCP project
 │   ├── extendscript.ts          # AppleScript-ExtendScript bridge
 │   ├── types.ts                 # TypeScript type definitions
 │   ├── tools/                   # Tool implementations (8 categories)
+│   │   ├── telemetry.ts         # Telemetry capture system
+│   │   ├── telemetryPersistence.ts  # Telemetry file storage
+│   │   └── telemetryServer.ts   # Telemetry-enabled server
 │   └── prompts/                 # Strategic workflow prompts
+├── src/experimental/
+│   └── evolutionary/            # Evolutionary testing system (Task-based)
+│       ├── taskBasedRunner.ts   # Task tool integration
+│       ├── patternAnalyzer.ts   # Pattern detection
+│       ├── claudeAnalyzer.ts    # Claude Code analysis
+│       └── example-task-workflow.ts  # Usage example
 ├── docs/                        # Documentation and API references
 │   └── InDesign ExtendScript_API_Adob_InDesign_2025/  # Complete InDesign API docs
-├── tests/                       # Unit and integration tests
 ├── dist/                        # Compiled JavaScript
 └── package.json                 # Dependencies & scripts
 ```
@@ -55,6 +63,10 @@ npm run lint:fix    # Auto-fix ESLint issues
 
 # Validation
 npm run build && npm start    # Validate compilation and server startup
+
+# Evolutionary Testing (Task-based)
+npx tsx src/experimental/evolutionary/example-task-workflow.ts  # See example workflow
+# Actual testing is done interactively using Claude Code's Task tool
 ```
 
 ## 📋 Git Workflow
@@ -156,13 +168,13 @@ Keep these test documents ready:
 
 ## 📊 Implementation Status
 
-### ✅ Completed (35 tools)
+### ✅ Completed (36 tools)
 - **Text Tools** (4): add_text, update_text, remove_text, get_document_text
 - **Style Tools** (8): paragraph/character style management, text selection
 - **Layout Tools** (3): text frame positioning, creation, and info
 - **Page Tools** (4): page management, dimensions
 - **Special Tools** (4): layers, tables, special characters, status
-- **Threading/Flow Tools** (6): text threading, overset resolution, flow management
+- **Threading/Flow Tools** (7): text threading, overset resolution, flow management, close_document
 - **Export/Import Tools** (6): document export, save, import content, place files, preview
 - **Transform Tools** (3): object transformation, duplication, alignment
 
@@ -225,5 +237,24 @@ npm run build && npm start
 3. **Test**: Build, restart server, validate tools, 10 min
 4. **Commit**: Document working state
 5. **Repeat**: Move to next 3 tools
+
+## 🧬 Evolutionary Testing System
+
+### Overview
+The evolutionary testing system automatically improves MCP tool descriptions based on empirical observation of LLM behavior. It runs multiple agents, captures telemetry, analyzes patterns, and evolves better tool descriptions.
+
+### Current Status
+- **Phase 1-5**: ✅ Complete
+- **Architecture**: Simplified Task-based approach using Claude Code
+- **Cost**: Zero API costs - uses Task tool only
+
+### Key Components
+- **Telemetry**: Captures all tool calls with parameters
+- **SubAgents**: Uses Task tool to run real Claude instances
+- **Pattern Analysis**: Identifies common failure patterns
+- **Claude Code Analysis**: Direct pattern interpretation and improvement generation
+
+### Usage
+See `EVOLUTIONARY-TEST-PROGRESS.md` for detailed implementation status and `src/experimental/evolutionary/README-TASK-BASED.md` for the complete usage guide.
 
 This guide provides Claude Code with essential project context for continuing InDesign MCP development efficiently.

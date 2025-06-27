@@ -9,7 +9,9 @@
     "dev": "tsx watch src/index.ts",
     "test": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --ignore-pattern \"src/guidance/**\" --ignore-pattern \"src/intelligence/**\"",
-    "lint:fix": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --ignore-pattern \"src/guidance/**\" --ignore-pattern \"src/intelligence/**\" --fix"
+    "lint:fix": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --ignore-pattern \"src/guidance/**\" --ignore-pattern \"src/intelligence/**\" --fix",
+    "build:tests": "tsc -p tsconfig.tests.json --pretty",
+    "typecheck": "npm run build && npm run build:tests"
   },
   "keywords": [],
   "author": "",
@@ -27,7 +29,9 @@
     "@typescript-eslint/eslint-plugin": "^8.34.1",
     "@typescript-eslint/parser": "^8.34.1",
     "eslint": "^9.29.0",
+    "fast-glob": "^3.3.3",
     "jest": "^29.7.0",
-    "ts-jest": "^29.1.0"
+    "ts-jest": "^29.1.0",
+    "ts-morph": "^26.0.0"
   }
 }

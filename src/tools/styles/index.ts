@@ -8,6 +8,7 @@ import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { TextAlignment, FontStyle, SelectionType } from "../../types.js";
 import { z } from "zod";
+import { markFontsChecked } from "../layout/index.js";
 
 /**
  * Registers all style management tools with the MCP server
@@ -102,6 +103,32 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
     },
     async (args) => {
       return await handleCreateCharacterStyle(args);
+    }
+  );
+
+  // Register list_system_fonts tool
+  server.tool(
+    "list_system_fonts",
+    {
+      filter: z.string().default("").describe("Optional case-insensitive substring to filter font family or full name"),
+      status: z.enum(["installed","missing","all"]).default("installed").describe("Filter by font status"),
+      limit: z.number().int().default(1000).describe("Maximum number of results to return")
+    },
+    async (args) => {
+      return await handleListSystemFonts(args);
+    }
+  );
+
+  // Register check_font_availability tool
+  server.tool(
+    "check_font_availability",
+    {
+      fonts: z.array(z.string()).min(1).describe("Font names to check. Use 'Family' or 'Family\\tStyle' for specific style"),
+      fail_if_missing: z.boolean().optional().describe("Fail if any of the fonts are missing"),
+      fallback_map: z.string().optional().describe("Fallback map to use if fonts are missing")
+    },
+    async (args) => {
+      return await handleCheckFontAvailability(args);
     }
   );
 }
@@ -582,4 +609,108 @@ async function handleCreateCharacterStyle(args: any): Promise<{ content: TextCon
       text: result.success ? `Successfully created character style: ${result.result}` : `Error creating character style: ${result.error}`
     }]
   };
+}
+
+/**
+ * Retrieves all installed system fonts, optionally filtered by substring
+ */
+async function handleListSystemFonts(args: any): Promise<{ content: TextContent[] }> {
+  const filter = (args.filter || "").toString().toLowerCase();
+  const statusFilter = args.status || "installed";
+  const limit = args.limit || 1000;
+  const jsx = `
+    (function() {
+      var results = [];
+      for (var i = 0; i < app.fonts.length; i++) {
+        var f = app.fonts[i];
+        var rec = {
+          fontFamily: f.fontFamily,
+          fontStyle: f.fontStyle,
+          fullName: f.fullName,
+          status: f.status.toString()
+        };
+        var passesFilter = ("${filter}" === "" || (rec.fontFamily + " " + rec.fullName).toLowerCase().indexOf("${filter}") !== -1);
+        if (passesFilter) {
+          results.push(rec);
+        }
+      }
+      return JSON.stringify(results);
+    })();`;
+
+  const result = await executeExtendScript(jsx);
+  if (!result.success) {
+    return { content: [{ type: "text", text: `Error listing fonts: ${result.error}` }] };
+  }
+
+  let fonts: any[] = [];
+  try { fonts = JSON.parse(result.result || "[]"); } catch {
+    // ignore parse errors
+  }
+  // Apply status filter and limit in JS side
+  const filtered = fonts.filter(f => {
+    if (statusFilter === "all") return true;
+    const isInstalled = (f.status || "").toLowerCase().indexOf("installed") !== -1;
+    return statusFilter === "installed" ? isInstalled : !isInstalled;
+  }).slice(0, limit);
+
+  const lines = [
+    `📚 **System Fonts (${filtered.length})**`,
+    ...filtered.map(f => `• ${f.fontFamily} – ${f.fontStyle} (${f.status})`)
+  ];
+  return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+/**
+ * Checks availability of specific fonts (family or family+style) in the system
+ */
+async function handleCheckFontAvailability(args: any): Promise<{ content: TextContent[] }> {
+  const fontsArr: string[] = args.fonts || [];
+  const failIfMissing = args.fail_if_missing || false;
+  const listJson = JSON.stringify(fontsArr);
+  const jsx = `
+    (function() {
+      var toCheck = ${listJson};
+      var available = [], missing = [];
+      for (var i = 0; i < toCheck.length; i++) {
+        var name = toCheck[i];
+        var fontObj;
+        try {
+          fontObj = app.fonts.itemByName(name);
+        } catch(e) {
+          fontObj = null;
+        }
+        if (fontObj && fontObj.isValid && fontObj.status === FontStatus.INSTALLED) {
+          available.push(name);
+        } else {
+          missing.push(name);
+        }
+      }
+      return JSON.stringify({ available: available, missing: missing });
+    })();`;
+
+  const result = await executeExtendScript(jsx);
+  if (!result.success) {
+    return { content: [{ type: "text", text: `Error checking fonts: ${result.error}` }] };
+  }
+  let payload: { available: string[]; missing: string[] } = { available: [], missing: [] };
+  try { 
+    payload = JSON.parse(result.result || "{}"); 
+  } catch (e) {
+    // If JSON parsing fails, return empty arrays
+    payload = { available: [], missing: [] };
+  }
+
+  // Mark fonts checked in layout cache
+  markFontsChecked();
+
+  const lines: string[] = [];
+  lines.push(`✅ Available: ${payload.available.length}`);
+  if (payload.available.length) lines.push(...payload.available.map(f => `  • ${f}`));
+  lines.push(`❌ Missing: ${payload.missing.length}`);
+  if (payload.missing.length) lines.push(...payload.missing.map(f => `  • ${f}`));
+
+  if (failIfMissing && payload.missing.length) {
+    return { content: [{ type: "text", text: `❌ Missing fonts: ${payload.missing.join(", ")}` }] };
+  }
+  return { content: [{ type: "text", text: lines.join("\n") }] };
 }

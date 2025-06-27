@@ -196,6 +196,58 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     }
   );
 
+  // === close_document =============================================
+  server.tool(
+    "close_document",
+    {
+      save: z.boolean().default(false).describe("Save the document before closing"),
+      filePath: z.string().optional().describe("Path to save the document copy (required if save = true)"),
+      force: z.boolean().default(false).describe("Force close without dialogs (SaveOptions.YES/NO)"),
+    },
+    async (args) => {
+      const saveFlag = args.save || false;
+      const forceFlag = args.force || false;
+      const filePath = args.filePath || "";
+
+      // Basic validation
+      if (saveFlag && !filePath) {
+        throw new Error("filePath is required when save is true");
+      }
+
+      // Build ExtendScript using join() pattern
+      const scriptLines = [
+        "try {",
+        "  if (app.documents.length === 0) {",
+        "    \"No documents are open\";",
+        "  } else {",
+        "    var doc = app.activeDocument;",
+        "    // Perform save if requested",
+        `    if ("${saveFlag}" === "true") {`,
+        `      var targetFile = new File("${filePath.replace(/\\/g, "/")}");`,
+        "      doc.save(targetFile);",
+        "    }",
+        "    // Determine save option",
+        `    var saveOpt = ("${saveFlag}" === "true") ? SaveOptions.YES : SaveOptions.NO;`,
+        `    if (!${forceFlag}) { saveOpt = SaveOptions.ASK; }`,
+        "    doc.close(saveOpt);",
+        "    \"Document closed\";",
+        "  }",
+        "} catch(e) { throw new Error(e); }",
+      ].join("\n");
+
+      const result = await executeExtendScript(scriptLines);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: result.success ? (result.result || "Document closed") : `Error closing document: ${result.error}`,
+          },
+        ],
+      };
+    }
+  );
+
   // === validate_layout ==============================================
   server.tool(
     "validate_layout",

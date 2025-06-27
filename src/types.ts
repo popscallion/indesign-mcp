@@ -246,3 +246,117 @@ export interface WorkflowContext {
   };
   userExperience?: "beginner" | "intermediate" | "advanced";
 }
+
+/**
+ * Decision checkpoint for tracking LLM reasoning
+ */
+export interface DecisionCheckpoint {
+  stage: 'layout' | 'styling' | 'threading' | 'final';
+  decision: string;
+  alternatives: string[];
+  reasoning: string;
+  timestamp: string;
+}
+
+/**
+ * Frame metrics for layout analysis
+ */
+export interface FrameMetrics {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  hasText: boolean;
+  contentLength: number;
+  overflows: boolean;
+}
+
+/**
+ * Margin metrics for layout analysis
+ */
+export interface MarginMetrics {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+}
+
+/**
+ * Style metrics for layout analysis
+ */
+export interface StyleMetrics {
+  name: string;
+  fontSize: number;
+  fontFamily: string;
+}
+
+/**
+ * Complete layout metrics for a page
+ */
+export interface LayoutMetrics {
+  frames: FrameMetrics[];
+  margins: MarginMetrics;
+  columns: number;
+  styles?: StyleMetrics[];  // Optional for backward compatibility
+  textRegions?: TextRegion[];  // Visual formatting regions
+}
+
+/**
+ * Layout deviation information
+ */
+export interface Deviation {
+  type: string;
+  field: string;
+  expected: any;
+  actual: any;
+  deviation: number;
+}
+
+/**
+ * Result of layout comparison
+ */
+export interface ComparisonResult {
+  match: boolean;
+  score: number;
+  deviations: Deviation[];
+}
+
+/**
+ * Visual attributes for text formatting
+ */
+export interface VisualAttributes {
+  fontSize: number;
+  leading: number;
+  fontFamily: string;
+  fontStyle: string;
+  alignment: 'left' | 'center' | 'right' | 'justify';
+  firstLineIndent: number;
+  leftIndent: number;
+}
+
+/**
+ * Text region containing multiple formatted segments
+ */
+export interface TextRegion {
+  frameIndex: number;
+  regions: TextSegment[];
+}
+
+/**
+ * Individual text segment with formatting
+ */
+export interface TextSegment {
+  textSnippet: string;
+  visualAttributes: VisualAttributes;
+  description: string;
+}
+
+/**
+ * Information about a system font available to InDesign
+ */
+export interface SystemFont {
+  fontFamily: string;
+  fontStyle: string;
+  fullName: string;
+  status: string; // e.g., "INSTALLED", "MISSING", etc.
+}

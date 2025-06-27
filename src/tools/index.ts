@@ -13,6 +13,68 @@ import { registerUtilityTools } from "./utility/index.js";
 import { registerExportTools } from "./export/index.js";
 import { registerTransformTools } from "./transform/index.js";
 import { registerCompositeTools } from "./composite/index.js";
+import { registerAnalysisTools } from "./analysis/index.js";
+import { TelemetryCapture } from "./telemetry.js";
+
+// Global flag to enable/disable telemetry
+let telemetryEnabled = false;
+
+/**
+ * Enable or disable telemetry capture
+ */
+export function setTelemetryEnabled(enabled: boolean) {
+  telemetryEnabled = enabled;
+}
+
+/**
+ * Check if telemetry is enabled
+ */
+export function isTelemetryEnabled(): boolean {
+  return telemetryEnabled;
+}
+
+/**
+ * Wrap a tool handler with telemetry capture
+ * 
+ * NOTE: The telemetry check happens at runtime, but the wrapper is added
+ * at registration time. This means tools must be registered with telemetry
+ * enabled if you want the option to capture telemetry later.
+ */
+export function wrapToolForTelemetry<T extends Record<string, any>>(
+  toolName: string, 
+  handler: (args: T) => Promise<any>
+): (args: T) => Promise<any> {
+  return async (args: T) => {
+    if (!telemetryEnabled) {
+      // Run without telemetry if disabled
+      return handler(args);
+    }
+    
+    const startTime = Date.now();
+    try {
+      const result = await handler(args);
+      
+      // Capture successful execution
+      TelemetryCapture.capture(toolName, args, {
+        success: true,
+        executionTime: Date.now() - startTime
+      });
+      
+      return result;
+    } catch (error) {
+      // Capture error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      TelemetryCapture.capture(toolName, args, {
+        success: false,
+        error: errorMessage,
+        executionTime: Date.now() - startTime
+      });
+      
+      // Re-throw the error
+      throw error;
+    }
+  };
+}
 
 /**
  * Registers all InDesign tools with the MCP server
@@ -46,6 +108,9 @@ export async function registerAllInDesignTools(server: McpServer): Promise<void>
     
     // Composite Macros
     await registerCompositeTools(server);
+    
+    // Decision Analysis Tools
+    await registerAnalysisTools(server);
     
     console.error("Successfully registered all InDesign tools");
   } catch (error) {

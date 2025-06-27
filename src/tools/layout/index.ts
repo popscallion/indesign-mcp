@@ -17,6 +17,8 @@ import { withChangeTracking } from "../../utils/changeSummary.js";
 interface DocumentStateCache {
   lastPageDimensionsCheck: Date | null;
   lastTextFrameInfo: Date | null;
+  lastFontCheck: Date | null;
+  fontsChecked: boolean;
   knownPageDimensions: { width: number; height: number } | null;
   workflowStepsCompleted: Set<string>;
 }
@@ -24,6 +26,8 @@ interface DocumentStateCache {
 const documentState: DocumentStateCache = {
   lastPageDimensionsCheck: null,
   lastTextFrameInfo: null,
+  lastFontCheck: null,
+  fontsChecked: false,
   knownPageDimensions: null,
   workflowStepsCompleted: new Set()
 };
@@ -81,6 +85,11 @@ export async function registerLayoutTools(server: McpServer): Promise<void> {
 async function validateLayoutPrerequisites(args: any, operation: string): Promise<ValidationResult> {
   const issues: string[] = [];
   const recommendations: string[] = [];
+
+  // Check if font availability verified (styling/layout often relies on this)
+  if (!documentState.fontsChecked) {
+    recommendations.push("Run check_font_availability() to verify required fonts");
+  }
 
   // Check if page dimensions are known
   const pageInfo = getLastPageDimensionsCheck();
@@ -154,6 +163,15 @@ export function updatePageDimensionsCache(width: number, height: number): void {
  */
 export function markInDesignStatusChecked(): void {
   markStepCompleted("indesign_status");
+}
+
+/**
+ * Public helper to mark that fonts have been checked during the session
+ */
+export function markFontsChecked(): void {
+  documentState.lastFontCheck = new Date();
+  documentState.fontsChecked = true;
+  markStepCompleted("check_font_availability");
 }
 
 /**

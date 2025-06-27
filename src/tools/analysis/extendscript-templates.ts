@@ -1,0 +1,302 @@
+/**
+ * Shared ExtendScript templates for analysis tools
+ */
+
+/**
+ * Generates ExtendScript to extract visual attributes from text frames
+ * This template is shared between extract_layout_metrics and compare_to_reference
+ */
+export function generateVisualAttributesExtraction(
+  pageNumber: number = -1,
+  includeStyles: boolean = true,
+  includeVisualAttributes: boolean = true
+): string {
+  return `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    var metrics = {
+      frames: [],
+      margins: null,
+      columns: 1,
+      styles: [],
+      textRegions: []
+    };
+    
+    // Determine page to analyze
+    var page;
+    if (${pageNumber} === -1) {
+      // Use current page
+      if (app.activeWindow && app.activeWindow.activePage) {
+        page = app.activeWindow.activePage;
+      } else {
+        page = doc.pages[0];
+      }
+    } else {
+      if (doc.pages.length < ${pageNumber}) {
+        throw new Error("Page " + ${pageNumber} + " does not exist.");
+      }
+      page = doc.pages[${pageNumber} - 1];
+    }
+    
+    // Extract page margins
+    try {
+      var pageBounds = page.bounds; // [y1, x1, y2, x2]
+      var marginPref = page.marginPreferences;
+      metrics.margins = {
+        top: marginPref.top,
+        left: marginPref.left,
+        bottom: marginPref.bottom,
+        right: marginPref.right
+      };
+      
+      // Calculate columns
+      metrics.columns = marginPref.columnCount || 1;
+    } catch (e) {
+      metrics.margins = { top: 72, left: 72, bottom: 72, right: 72 };
+    }
+    
+    // Extract text frame information with visual attributes
+    for (var i = 0; i < page.textFrames.length; i++) {
+      var frame = page.textFrames[i];
+      var bounds = frame.geometricBounds;
+      
+      var frameData = {
+        x: Math.round(bounds[1]),
+        y: Math.round(bounds[0]),
+        width: Math.round(bounds[3] - bounds[1]),
+        height: Math.round(bounds[2] - bounds[0]),
+        hasText: frame.contents.length > 0,
+        contentLength: frame.contents.length,
+        overflows: frame.overflows
+      };
+      
+      metrics.frames.push(frameData);
+      
+      // Extract visual attributes for each frame
+      if (${includeVisualAttributes} && frame.contents.length > 0) {
+        var textRegion = {
+          frameIndex: i,
+          regions: []
+        };
+        
+        // Analyze paragraphs in this frame
+        var story = frame.parentStory;
+        var lastStyle = null;
+        var currentRegion = null;
+        
+        for (var p = 0; p < story.paragraphs.length; p++) {
+          var para = story.paragraphs[p];
+          
+          // Skip if paragraph is not in this frame
+          if (para.parentTextFrames.length === 0 || para.parentTextFrames[0] !== frame) {
+            continue;
+          }
+          
+          try {
+            var style = para.appliedParagraphStyle;
+            var font = para.appliedFont;
+            var fontSize = para.pointSize;
+            var leading = para.leading;
+            var alignment = para.justification.toString();
+            var firstLineIndent = para.firstLineIndent;
+            var leftIndent = para.leftIndent;
+            
+            // Create a style key to detect changes
+            var styleKey = fontSize + "_" + leading + "_" + alignment + "_" + firstLineIndent + "_" + leftIndent;
+            
+            if (styleKey !== lastStyle) {
+              // New style region
+              if (currentRegion) {
+                textRegion.regions.push(currentRegion);
+              }
+              
+              // Map InDesign alignment to our format
+              var alignmentMap = {
+                "Justification.LEFT_ALIGN": "left",
+                "Justification.CENTER_ALIGN": "center",
+                "Justification.RIGHT_ALIGN": "right",
+                "Justification.LEFT_JUSTIFIED": "justify",
+                "Justification.RIGHT_JUSTIFIED": "justify",
+                "Justification.CENTER_JUSTIFIED": "justify",
+                "Justification.FULLY_JUSTIFIED": "justify"
+              };
+              
+              var alignValue = alignmentMap[alignment] || "left";
+              
+              currentRegion = {
+                textSnippet: para.contents.substring(0, 30) + (para.contents.length > 30 ? "..." : ""),
+                visualAttributes: {
+                  fontSize: Math.round(fontSize),
+                  leading: Math.round(leading),
+                  fontFamily: font ? font.fontFamily : "Unknown",
+                  fontStyle: font ? font.fontStyleName : "Regular",
+                  alignment: alignValue,
+                  firstLineIndent: Math.round(firstLineIndent),
+                  leftIndent: Math.round(leftIndent)
+                },
+                description: style.name.replace(/ /g, "_").toLowerCase()
+              };
+              
+              lastStyle = styleKey;
+            }
+          } catch (e) {
+            // Skip paragraphs with errors
+          }
+        }
+        
+        // Add last region
+        if (currentRegion) {
+          textRegion.regions.push(currentRegion);
+        }
+        
+        if (textRegion.regions.length > 0) {
+          metrics.textRegions.push(textRegion);
+        }
+      }
+    }
+    
+    // Extract style information if requested (for backward compatibility)
+    if (${includeStyles}) {
+      // Get paragraph styles used in the document
+      var usedStyles = {};
+      
+      for (var s = 0; s < doc.stories.length; s++) {
+        var story = doc.stories[s];
+        for (var p = 0; p < story.paragraphs.length; p++) {
+          var para = story.paragraphs[p];
+          try {
+            var styleName = para.appliedParagraphStyle.name;
+            if (!usedStyles[styleName]) {
+              var style = para.appliedParagraphStyle;
+              usedStyles[styleName] = {
+                name: styleName,
+                fontSize: style.pointSize,
+                fontFamily: style.appliedFont ? style.appliedFont.fontFamily : "Unknown"
+              };
+            }
+          } catch (e) {
+            // Skip if can't get style
+          }
+        }
+      }
+      
+      // Convert to array
+      for (var key in usedStyles) {
+        if (usedStyles.hasOwnProperty(key)) {
+          metrics.styles.push(usedStyles[key]);
+        }
+      }
+    }
+    
+    // Convert to JSON string using proper JSON construction
+    ${generateJSONConversion(includeStyles, includeVisualAttributes)}
+  `;
+}
+
+/**
+ * Generates ExtendScript to convert metrics object to JSON string
+ * Uses arrays and join for safer string building
+ */
+export function generateJSONConversion(includeStyles: boolean, includeVisualAttributes: boolean): string {
+  return `
+    // Build JSON using arrays for safer string construction
+    var jsonParts = [];
+    jsonParts.push('{');
+    
+    // Frames array
+    jsonParts.push('"frames":[');
+    var frameParts = [];
+    for (var f = 0; f < metrics.frames.length; f++) {
+      var fr = metrics.frames[f];
+      frameParts.push(
+        '{"x":' + fr.x + 
+        ',"y":' + fr.y + 
+        ',"width":' + fr.width + 
+        ',"height":' + fr.height +
+        ',"hasText":' + fr.hasText + 
+        ',"contentLength":' + fr.contentLength +
+        ',"overflows":' + fr.overflows + '}'
+      );
+    }
+    jsonParts.push(frameParts.join(','));
+    jsonParts.push(']');
+    
+    // Margins
+    jsonParts.push(',"margins":{');
+    jsonParts.push('"top":' + metrics.margins.top);
+    jsonParts.push(',"left":' + metrics.margins.left);
+    jsonParts.push(',"bottom":' + metrics.margins.bottom);
+    jsonParts.push(',"right":' + metrics.margins.right);
+    jsonParts.push('}');
+    
+    // Columns
+    jsonParts.push(',"columns":' + metrics.columns);
+    
+    // Styles (if included)
+    if (metrics.styles.length > 0) {
+      jsonParts.push(',"styles":[');
+      var styleParts = [];
+      for (var st = 0; st < metrics.styles.length; st++) {
+        var style = metrics.styles[st];
+        styleParts.push(
+          '{"name":' + JSON.stringify(style.name) + 
+          ',"fontSize":' + style.fontSize + 
+          ',"fontFamily":' + JSON.stringify(style.fontFamily) + '}'
+        );
+      }
+      jsonParts.push(styleParts.join(','));
+      jsonParts.push(']');
+    } else if (` + includeStyles + `) {
+      jsonParts.push(',"styles":[]');
+    }
+    
+    // Text regions (if included)
+    if (metrics.textRegions.length > 0) {
+      jsonParts.push(',"textRegions":[');
+      var regionParts = [];
+      
+      for (var tr = 0; tr < metrics.textRegions.length; tr++) {
+        var textRegion = metrics.textRegions[tr];
+        var regionJson = '{"frameIndex":' + textRegion.frameIndex + ',"regions":[';
+        
+        var segmentParts = [];
+        for (var r = 0; r < textRegion.regions.length; r++) {
+          var region = textRegion.regions[r];
+          var va = region.visualAttributes;
+          
+          segmentParts.push(
+            '{' +
+            '"textSnippet":' + JSON.stringify(region.textSnippet) + ',' +
+            '"visualAttributes":{' +
+              '"fontSize":' + va.fontSize + ',' +
+              '"leading":' + va.leading + ',' +
+              '"fontFamily":' + JSON.stringify(va.fontFamily) + ',' +
+              '"fontStyle":' + JSON.stringify(va.fontStyle) + ',' +
+              '"alignment":"' + va.alignment + '",' +
+              '"firstLineIndent":' + va.firstLineIndent + ',' +
+              '"leftIndent":' + va.leftIndent +
+            '},' +
+            '"description":' + JSON.stringify(region.description) +
+            '}'
+          );
+        }
+        
+        regionJson += segmentParts.join(',') + ']}';
+        regionParts.push(regionJson);
+      }
+      
+      jsonParts.push(regionParts.join(','));
+      jsonParts.push(']');
+    } else if (` + includeVisualAttributes + `) {
+      jsonParts.push(',"textRegions":[]');
+    }
+    
+    jsonParts.push('}');
+    
+    var result = jsonParts.join('');
+    result;
+  `;
+}
