@@ -242,9 +242,9 @@ export function generateJSONConversion(includeStyles: boolean, includeVisualAttr
       for (var st = 0; st < metrics.styles.length; st++) {
         var style = metrics.styles[st];
         styleParts.push(
-          '{"name":' + JSON.stringify(style.name) + 
+          '{"name":"' + style.name.replace(/"/g, '\\\\"') + '"' + 
           ',"fontSize":' + style.fontSize + 
-          ',"fontFamily":' + JSON.stringify(style.fontFamily) + '}'
+          ',"fontFamily":"' + style.fontFamily.replace(/"/g, '\\\\"') + '"}'
         );
       }
       jsonParts.push(styleParts.join(','));
@@ -269,17 +269,17 @@ export function generateJSONConversion(includeStyles: boolean, includeVisualAttr
           
           segmentParts.push(
             '{' +
-            '"textSnippet":' + JSON.stringify(region.textSnippet) + ',' +
+            '"textSnippet":"' + region.textSnippet.replace(/"/g, '\\\\"') + '",' +
             '"visualAttributes":{' +
               '"fontSize":' + va.fontSize + ',' +
               '"leading":' + va.leading + ',' +
-              '"fontFamily":' + JSON.stringify(va.fontFamily) + ',' +
-              '"fontStyle":' + JSON.stringify(va.fontStyle) + ',' +
+              '"fontFamily":"' + va.fontFamily.replace(/"/g, '\\\\"') + '",' +
+              '"fontStyle":"' + va.fontStyle.replace(/"/g, '\\\\"') + '",' +
               '"alignment":"' + va.alignment + '",' +
               '"firstLineIndent":' + va.firstLineIndent + ',' +
               '"leftIndent":' + va.leftIndent +
             '},' +
-            '"description":' + JSON.stringify(region.description) +
+            '"description":"' + region.description.replace(/"/g, '\\\\"') + '"' +
             '}'
           );
         }
