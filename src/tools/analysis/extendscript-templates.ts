@@ -100,6 +100,10 @@ export function generateVisualAttributesExtraction(
             var font = para.appliedFont;
             var fontSize = para.pointSize;
             var leading = para.leading;
+            // Handle leading as it can be a number or AUTO enum value
+            if (typeof leading !== "number") {
+              leading = fontSize * 1.2; // Default to 120% of font size
+            }
             var alignment = para.justification.toString();
             var firstLineIndent = para.firstLineIndent;
             var leftIndent = para.leftIndent;
@@ -126,8 +130,16 @@ export function generateVisualAttributesExtraction(
               
               var alignValue = alignmentMap[alignment] || "left";
               
+              // Escape text for JSON
+              var snippet = para.contents.substring(0, 30) + (para.contents.length > 30 ? "..." : "");
+              snippet = snippet.replace(/\\/g, "\\\\\\\\")
+                              .replace(/"/g, '\\\\"')
+                              .replace(/\n/g, "\\\\n")
+                              .replace(/\r/g, "\\\\r")
+                              .replace(/\t/g, "\\\\t");
+              
               currentRegion = {
-                textSnippet: para.contents.substring(0, 30) + (para.contents.length > 30 ? "..." : ""),
+                textSnippet: snippet,
                 visualAttributes: {
                   fontSize: Math.round(fontSize),
                   leading: Math.round(leading),

@@ -55,16 +55,49 @@ export async function runEvolutionTest(options: {
       referenceDescription: 'Academic book page with heading and body text'
     };
     
-    // 4. Prepare for generation
+    // 4. Pre-flight checks
+    console.log('3. Running pre-flight checks...');
+    
+    // 4.1. Verify document can be reset
+    try {
+      await runner.resetInDesignState();
+      console.log('✓ Document reset working');
+    } catch (error) {
+      console.error('❌ Document reset failed:', error);
+      throw new Error('Cannot proceed - document reset is broken');
+    }
+    
+    // 4.2. Verify telemetry directory
+    const telemetryDir = '/tmp/evolution_tests/telemetry';
+    try {
+      await fs.access(telemetryDir, fs.constants.W_OK);
+      console.log('✓ Telemetry directory writable');
+    } catch {
+      console.error('❌ Telemetry directory not writable');
+      throw new Error('Cannot proceed - telemetry directory issues');
+    }
+    
+    // 4.3. Verify reference image exists
+    try {
+      await fs.access(referenceImage, fs.constants.R_OK);
+      console.log('✓ Reference image found');
+    } catch {
+      console.error('❌ Reference image not found:', referenceImage);
+      throw new Error('Cannot proceed - missing reference image');
+    }
+    
+    console.log('✓ All pre-flight checks passed\n');
+    
+    // 5. Prepare for generation
     await runner.prepareGeneration(generation);
     
-    // 5. Clean up old telemetry files
-    console.log('3. Cleaning up old telemetry files...');
+    // 6. Clean up old telemetry files
+    console.log('4. Cleaning up old telemetry files...');
     await TelemetryCapture.cleanupOldTelemetry(7 * 24 * 60 * 60 * 1000); // 7 days
     console.log('✓ Telemetry cleanup complete\n');
     
-    // 6. Run Task agents
-    console.log(`4. Running ${agentCount} Task agents...`);
+    // 7. Run Task agents
+    console.log(`5. Running ${agentCount} Task agents...`);
     const runs: TestRun[] = [];
     
     for (let i = 0; i < agentCount; i++) {
@@ -76,16 +109,22 @@ export async function runEvolutionTest(options: {
       // Create Task prompt
       const prompt = runner.createTaskPrompt(config, agentId, sessionId);
       
+      // Make the prompt REALLY visible
+      console.log('\n\n');
+      console.log('█████████████████████████████████████████████████████████████');
+      console.log('█                                                           █');
+      console.log('█  🚨 AGENT PROMPT READY - IMMEDIATE ACTION REQUIRED! 🚨    █');
+      console.log('█                                                           █');
+      console.log('█████████████████████████████████████████████████████████████');
       console.log(`\n--- Ready to launch ${agentId} ---`);
       console.log(`Session ID: ${sessionId}`);
-      console.log('Task prompt:');
-      console.log('```');
+      console.log('\n▼ COPY THIS ENTIRE PROMPT ▼\n');
+      console.log('─'.repeat(60));
       console.log(prompt);
-      console.log('```');
-      
-      // IMPORTANT: This is where Claude Code uses the Task tool
-      console.log('\n[Claude Code should now invoke Task tool with the above prompt]');
-      console.log('[Waiting for Task agent to complete...]');
+      console.log('─'.repeat(60));
+      console.log('\n▲ END OF PROMPT ▲\n');
+      console.log('⏰ You have 5 MINUTES to run the Task agent!');
+      console.log('Use: Task("Recreate InDesign layout", <paste prompt above>)\n');
       
       // After Task completes, collect results
       console.log('\n[Task completed - collecting results]');
@@ -112,19 +151,19 @@ export async function runEvolutionTest(options: {
       }
     }
     
-    // 7. Collect generation results
-    console.log('\n5. Analyzing generation results...');
+    // 8. Collect generation results
+    console.log('\n6. Analyzing generation results...');
     const generationResult = await runner.collectGenerationResults(runs);
     runner.displayGenerationSummary(generationResult);
     
-    // 8. Analyze patterns
-    console.log('\n6. Analyzing patterns...');
+    // 9. Analyze patterns
+    console.log('\n7. Analyzing patterns...');
     const patternAnalyzer = new PatternAnalyzer();
     const patterns = patternAnalyzer.analyzePatterns(runs);
     console.log(`Found ${patterns.length} patterns\n`);
     
-    // 9. Generate analysis report
-    console.log('7. Generating analysis report...');
+    // 10. Generate analysis report
+    console.log('8. Generating analysis report...');
     const claudeAnalyzer = new ClaudeAnalyzer();
     const report = await claudeAnalyzer.formatPatternAnalysis(
       runs,
@@ -133,7 +172,7 @@ export async function runEvolutionTest(options: {
       testCase
     );
     
-    // 10. Save report
+    // 11. Save report
     const reportPath = `${runner['config'].paths.resultsDir}/gen${generation}-analysis.md`;
     await fs.writeFile(reportPath, report, 'utf-8');
     console.log(`✓ Report saved to: ${reportPath}\n`);

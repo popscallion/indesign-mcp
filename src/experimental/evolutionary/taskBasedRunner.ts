@@ -88,21 +88,31 @@ export class TaskBasedRunner {
     };
     console.log(`Creating prompt for ${agentId} (Gen ${config.generation}, Session: ${sessionId})`);
     
-    // Minimal prompt - just the task
-    let prompt = 'Recreate this academic book page layout in InDesign using the available MCP tools.\n\n';
+    // Make session ID prominent
+    let prompt = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    prompt += `SESSION ID: ${sessionId}\n`;
+    prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    // Add reference - either image path or basic description
+    prompt += 'CONTEXT: The InDesign document has been cleared and is ready for your layout.\n\n';
+    
+    prompt += 'TASK: Recreate this academic book page layout in InDesign using the available MCP tools.\n\n';
+    
+    // Add reference
     if (config.referenceImage) {
-      prompt += `Reference: ${config.referenceImage}`;
+      prompt += `Reference Image: ${config.referenceImage}\n\n`;
     } else if (config.referenceDescription) {
-      prompt += `Reference: ${config.referenceDescription}`;
+      prompt += `Reference: ${config.referenceDescription}\n\n`;
     } else {
       // Fallback minimal description
-      prompt += 'Reference: A typical academic book page with a heading and body text.';
+      prompt += 'Reference: A typical academic book page with a heading and body text.\n\n';
     }
     
-    // Add telemetry session ending instruction
-    prompt += '\n\nIMPORTANT: When you have completed the layout recreation, call the "telemetry_end_session" tool to properly finalize the telemetry data collection.';
+    // Make telemetry instruction unmissable
+    prompt += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+    prompt += '⚠️  CRITICAL: When you complete the layout, you MUST call:\n';
+    prompt += '   telemetry_end_session\n';
+    prompt += 'This saves your work and allows the test to continue!\n';
+    prompt += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
     
     return prompt;
   }
@@ -118,7 +128,8 @@ export class TaskBasedRunner {
     
     // Wait for session completion sentinel
     const { TelemetryCapture } = await import('../../tools/telemetry.js');
-    const completed = await TelemetryCapture.waitForSessionComplete(sessionId, 30000);
+    const timeout = parseInt(process.env.TELEMETRY_WAIT_TIMEOUT || '300000'); // 5 min default
+    const completed = await TelemetryCapture.waitForSessionComplete(sessionId, timeout);
     
     if (!completed) {
       console.warn(`⚠️  Session completion sentinel not found for ${sessionId}`);
@@ -130,15 +141,42 @@ export class TaskBasedRunner {
     
     if (!session) {
       console.warn(`⚠️  No telemetry data found for ${sessionId}`);
-      // Create synthetic session as fallback
-      return {
-        id: sessionId,
-        startTime: Date.now(),
-        endTime: Date.now(),
-        agentId,
-        generation: this.currentGeneration,
-        calls: []
-      };
+      console.log('Creating fallback telemetry from document state...');
+      
+      // Extract what we can from the document
+      try {
+        const metrics = await this.extractLayoutMetrics();
+        const hasContent = metrics.frames.some(f => f.hasText && f.contentLength > 0);
+        
+        // Create synthetic session
+        return {
+          id: sessionId,
+          startTime: Date.now() - 180000, // Assume 3 minutes
+          endTime: Date.now(),
+          agentId,
+          generation: this.currentGeneration,
+          calls: hasContent ? [
+            {
+              timestamp: Date.now() - 180000,
+              tool: 'synthetic_analysis',
+              parameters: { note: 'Reconstructed from document state' },
+              executionTime: 0,
+              result: 'success'
+            }
+          ] : []
+        };
+      } catch (error) {
+        console.error('Failed to create fallback telemetry:', error);
+        // Return empty session
+        return {
+          id: sessionId,
+          startTime: Date.now(),
+          endTime: Date.now(),
+          agentId,
+          generation: this.currentGeneration,
+          calls: []
+        };
+      }
     }
     
     console.log(`✓ Task session loaded: ${session.calls.length} tool calls captured`);

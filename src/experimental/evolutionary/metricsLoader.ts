@@ -85,7 +85,7 @@ export async function getReferenceImagePath(testCase: string): Promise<string> {
   if (data.referenceImage.startsWith('../')) {
     return path.join(
       process.cwd(),
-      'tests/decision-analysis',
+      'tests/decision-analysis/test-cases',
       data.referenceImage
     );
   }

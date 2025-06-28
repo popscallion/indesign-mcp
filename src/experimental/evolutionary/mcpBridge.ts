@@ -104,8 +104,7 @@ export class McpBridge {
     const script = `
       if (app.documents.length === 0) {
         // Create a new document if none exists
-        var defaultPreset = app.documentPresets[0]; // Use default preset
-        var doc = app.documents.add(defaultPreset);
+        var doc = app.documents.add();
         "Created new document";
       } else {
         var doc = app.activeDocument;
@@ -149,11 +148,12 @@ export class McpBridge {
   }
   
   /**
-   * Reset InDesign to clean state (alias for backward compatibility)
-   * @deprecated Use checkInDesignState() instead
+   * Reset InDesign to clean state
+   * Actually resets the document, not just checks it
    */
   async resetInDesignState(): Promise<void> {
-    return this.checkInDesignState();
+    await this.checkInDesignState();
+    await this.resetDocument();  // Actually reset!
   }
   
   /**

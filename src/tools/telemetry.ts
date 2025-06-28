@@ -494,6 +494,7 @@ export class TelemetryCapture {
     
     const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
     const startTime = Date.now();
+    let lastProgressTime = startTime;
     
     while (Date.now() - startTime < timeout) {
       try {
@@ -503,6 +504,14 @@ export class TelemetryCapture {
         }
       } catch (e) {
         // File might not exist yet
+      }
+      
+      // Show progress every 30 seconds
+      if (Date.now() - lastProgressTime > 30000) {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const remaining = Math.round((timeout - (Date.now() - startTime)) / 1000);
+        console.log(`   ...waiting for telemetry (${elapsed}s elapsed, ${remaining}s remaining)`);
+        lastProgressTime = Date.now();
       }
       
       // Wait a bit before checking again
