@@ -1,17 +1,4 @@
-/**
- * Shared ExtendScript templates for analysis tools
- */
 
-/**
- * Generates ExtendScript to extract visual attributes from text frames
- * This template is shared between extract_layout_metrics and compare_to_reference
- */
-export function generateVisualAttributesExtraction(
-  pageNumber: number = -1,
-  includeStyles: boolean = true,
-  includeVisualAttributes: boolean = true
-): string {
-  return `
     if (app.documents.length === 0) {
       throw new Error("No documents are open in InDesign.");
     }
@@ -27,7 +14,7 @@ export function generateVisualAttributesExtraction(
     
     // Determine page to analyze
     var page;
-    if (${pageNumber} === -1) {
+    if (-1 === -1) {
       // Use current page
       if (app.activeWindow && app.activeWindow.activePage) {
         page = app.activeWindow.activePage;
@@ -35,10 +22,10 @@ export function generateVisualAttributesExtraction(
         page = doc.pages[0];
       }
     } else {
-      if (doc.pages.length < ${pageNumber}) {
-        throw new Error("Page " + ${pageNumber} + " does not exist.");
+      if (doc.pages.length < -1) {
+        throw new Error("Page " + -1 + " does not exist.");
       }
-      page = doc.pages[${pageNumber} - 1];
+      page = doc.pages[-1 - 1];
     }
     
     // Extract page margins
@@ -76,7 +63,7 @@ export function generateVisualAttributesExtraction(
       metrics.frames.push(frameData);
       
       // Extract visual attributes for each frame
-      if (${includeVisualAttributes} && frame.contents.length > 0) {
+      if (true && frame.contents.length > 0) {
         var textRegion = {
           frameIndex: i,
           regions: []
@@ -132,11 +119,11 @@ export function generateVisualAttributesExtraction(
               
               // Escape text for JSON
               var snippet = para.contents.substring(0, 30) + (para.contents.length > 30 ? "..." : "");
-              snippet = snippet.replace(/\\\\/g, "\\\\\\\\")
-                              .replace(/"/g, '\\\\"')
-                              .replace(/\\n/g, "\\\\n")
-                              .replace(/\\r/g, "\\\\r")
-                              .replace(/\\t/g, "\\\\t");
+              snippet = snippet.replace(/\\/g, "\\\\")
+                              .replace(/"/g, '\\"')
+                              .replace(/\n/g, "\\n")
+                              .replace(/\r/g, "\\r")
+                              .replace(/\t/g, "\\t");
               
               currentRegion = {
                 textSnippet: snippet,
@@ -171,7 +158,7 @@ export function generateVisualAttributesExtraction(
     }
     
     // Extract style information if requested (for backward compatibility)
-    if (${includeStyles}) {
+    if (true) {
       // Get paragraph styles used in the document
       var usedStyles = {};
       
@@ -204,16 +191,7 @@ export function generateVisualAttributesExtraction(
     }
     
     // Convert to JSON string using proper JSON construction
-    ${generateJSONConversion(includeStyles, includeVisualAttributes)}
-  `;
-}
-
-/**
- * Generates ExtendScript to convert metrics object to JSON string
- * Uses arrays and join for safer string building
- */
-export function generateJSONConversion(includeStyles: boolean, includeVisualAttributes: boolean): string {
-  return `
+    
     // Build JSON using arrays for safer string construction
     var jsonParts = [];
     jsonParts.push('{');
@@ -254,14 +232,14 @@ export function generateJSONConversion(includeStyles: boolean, includeVisualAttr
       for (var st = 0; st < metrics.styles.length; st++) {
         var style = metrics.styles[st];
         styleParts.push(
-          '{"name":"' + style.name.replace(/"/g, '\\\\"') + '"' + 
+          '{"name":"' + style.name.replace(/"/g, '\\"') + '"' + 
           ',"fontSize":' + style.fontSize + 
-          ',"fontFamily":"' + style.fontFamily.replace(/"/g, '\\\\"') + '"}'
+          ',"fontFamily":"' + style.fontFamily.replace(/"/g, '\\"') + '"}'
         );
       }
       jsonParts.push(styleParts.join(','));
       jsonParts.push(']');
-    } else if (${includeStyles ? 'true' : 'false'}) {
+    } else if (true) {
       jsonParts.push(',"styles":[]');
     }
     
@@ -281,17 +259,17 @@ export function generateJSONConversion(includeStyles: boolean, includeVisualAttr
           
           segmentParts.push(
             '{' +
-            '"textSnippet":"' + region.textSnippet.replace(/"/g, '\\\\"') + '",' +
+            '"textSnippet":"' + region.textSnippet.replace(/"/g, '\\"') + '",' +
             '"visualAttributes":{' +
               '"fontSize":' + va.fontSize + ',' +
               '"leading":' + va.leading + ',' +
-              '"fontFamily":"' + va.fontFamily.replace(/"/g, '\\\\"') + '",' +
-              '"fontStyle":"' + va.fontStyle.replace(/"/g, '\\\\"') + '",' +
+              '"fontFamily":"' + va.fontFamily.replace(/"/g, '\\"') + '",' +
+              '"fontStyle":"' + va.fontStyle.replace(/"/g, '\\"') + '",' +
               '"alignment":"' + va.alignment + '",' +
               '"firstLineIndent":' + va.firstLineIndent + ',' +
               '"leftIndent":' + va.leftIndent +
             '},' +
-            '"description":"' + region.description.replace(/"/g, '\\\\"') + '"' +
+            '"description":"' + region.description.replace(/"/g, '\\"') + '"' +
             '}'
           );
         }
@@ -302,7 +280,7 @@ export function generateJSONConversion(includeStyles: boolean, includeVisualAttr
       
       jsonParts.push(regionParts.join(','));
       jsonParts.push(']');
-    } else if (${includeVisualAttributes ? 'true' : 'false'}) {
+    } else if (true) {
       jsonParts.push(',"textRegions":[]');
     }
     
@@ -310,5 +288,5 @@ export function generateJSONConversion(includeStyles: boolean, includeVisualAttr
     
     var result = jsonParts.join('');
     result;
-  `;
-}
+  
+  

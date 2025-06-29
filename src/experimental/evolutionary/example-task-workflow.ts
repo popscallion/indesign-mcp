@@ -1,7 +1,16 @@
 /**
  * @fileoverview Example workflow for Task-based evolutionary testing
  * 
- * IMPORTANT: This file demonstrates the workflow that Claude Code follows.
+ * IMPORTANT: This file demonstrates the conceptual workflow.
+ * For actual execution, use InteractiveEvolution instead:
+ * 
+ * ```typescript
+ * import { InteractiveEvolution } from './interactiveEvolution.js';
+ * const evolution = new InteractiveEvolution();
+ * await evolution.initialize('book-page');
+ * ```
+ * 
+ * This example shows what happens internally when you use InteractiveEvolution.
  * It is NOT meant to be run directly as a script.
  * 
  * Claude Code will:

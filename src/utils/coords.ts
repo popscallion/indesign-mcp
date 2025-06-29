@@ -9,6 +9,11 @@ export function toPoints(val: number | string, axis: "x"|"y"|"w"|"h", pageWidth:
     if (val === "center") {
       return axis === "x" ? pageWidth / 2 : pageHeight / 2;
     }
+    // Handle string numbers
+    const parsed = parseFloat(val);
+    if (!isNaN(parsed) && val === parsed.toString()) {
+      return parsed;
+    }
   }
   throw new Error(`Unsupported coordinate value: ${val}`);
 } 

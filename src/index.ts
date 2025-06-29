@@ -79,7 +79,17 @@ export { createInDesignMcpServer };
  */
 async function main(): Promise<void> {
   try {
-    const server = await createInDesignMcpServer();
+    // Auto-detect telemetry mode for evolutionary testing
+    const enableTelemetry = process.env.TELEMETRY_ENABLED === 'true' ||
+                           process.env.EVOLUTION_SESSION_ID !== undefined ||
+                           process.env.TELEMETRY_SESSION_ID !== undefined;
+    
+    const server = await createInDesignMcpServer(enableTelemetry);
+    
+    if (enableTelemetry) {
+      console.error("🔬 MCP Server started with telemetry enabled");
+    }
+    
     const transport = new StdioServerTransport();
     
     await server.connect(transport);

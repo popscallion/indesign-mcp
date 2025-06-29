@@ -20,7 +20,7 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     async () => {
       try {
         const { TelemetryCapture } = await import('../telemetry.js');
-        const { isTelemetryEnabled } = await import('../index.js');
+        const { isTelemetryEnabled } = await import('../telemetryFlag.js');
         
         // Detailed diagnostics before ending session
         console.log('📊 Telemetry End Session Diagnostics:');
@@ -82,7 +82,7 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
       
       // CRITICAL: Also flip the in-memory telemetry flag when enabling telemetry
       if (args.name === 'TELEMETRY_ENABLED' && args.value === 'true') {
-        const { setTelemetryEnabled } = await import('../index.js');
+        const { setTelemetryEnabled } = await import('../telemetryFlag.js');
         const { TelemetryCapture } = await import('../telemetry.js');
         
         // Enable telemetry system
@@ -95,11 +95,25 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
         const generation = parseInt(process.env.TELEMETRY_GENERATION || '0');
         
         if (sessionId) {
-          console.log(`📊 Evolution context detected - starting telemetry session: ${sessionId}`);
-          await TelemetryCapture.startSession(agentId, generation);
-          console.log(`📊 Telemetry session started for agent: ${agentId}, generation: ${generation}`);
+          // Check if session already exists to prevent double-start
+          const existingSession = TelemetryCapture.getCurrentSession();
+          if (!existingSession) {
+            if (process.env.DEBUG_TELEMETRY) {
+              console.log(`📊 Evolution context detected - starting telemetry session: ${sessionId}`);
+            }
+            await TelemetryCapture.startSession(agentId, generation);
+            if (process.env.DEBUG_TELEMETRY) {
+              console.log(`📊 Telemetry session started for agent: ${agentId}, generation: ${generation}`);
+            }
+          } else {
+            if (process.env.DEBUG_TELEMETRY) {
+              console.log(`📊 Telemetry session already exists: ${existingSession.id}`);
+            }
+          }
         } else {
-          console.log(`📊 Telemetry enabled but no evolution session ID found - will start session on first tool call`);
+          if (process.env.DEBUG_TELEMETRY) {
+            console.log(`📊 Telemetry enabled but no evolution session ID found - will start session on first tool call`);
+          }
         }
       }
       

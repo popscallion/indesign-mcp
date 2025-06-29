@@ -9,9 +9,9 @@ import { wrapToolForTelemetry, isTelemetryEnabled } from "./index.js";
 /**
  * Create a telemetry-enabled MCP server that wraps all tool handlers
  * 
- * IMPORTANT: Telemetry wrapping is determined at tool registration time.
- * Changing setTelemetryEnabled() after tools are registered will not affect
- * already-registered tools. This is by design to avoid runtime overhead.
+ * All tools are registered with telemetry wrappers. The wrapper checks
+ * the telemetry enabled flag at runtime, allowing dynamic enable/disable
+ * via set_environment_variable tool.
  */
 export function createTelemetryServer(baseServer: McpServer): McpServer {
   // Create a proxy that intercepts the tool registration method
@@ -19,15 +19,15 @@ export function createTelemetryServer(baseServer: McpServer): McpServer {
     get(target, prop, receiver) {
       if (prop === 'tool') {
         // Return a wrapped version of the tool registration function
-        return function(name: string, schema: any, handler: any) {
-          // Check if we should wrap with telemetry at registration time
-          if (isTelemetryEnabled()) {
-            const wrappedHandler = wrapToolForTelemetry(name, handler);
-            return target.tool(name, schema, wrappedHandler);
-          } else {
-            // Register normally without telemetry
-            return target.tool(name, schema, handler);
-          }
+        return function(...args: any[]) {
+          // Handle both 2-arg and 3-arg forms of server.tool()
+          const [name, maybeSchema, maybeHandler] = args;
+          const handler = args.length === 2 ? maybeSchema : maybeHandler;
+          const schema = args.length === 2 ? undefined : maybeSchema;
+          
+          // Always wrap with telemetry - the wrapper handles enable/disable at runtime
+          const wrappedHandler = wrapToolForTelemetry(name, handler);
+          return target.tool(name, schema, wrappedHandler);
         };
       }
       

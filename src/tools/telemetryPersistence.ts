@@ -5,6 +5,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 import { TelemetrySession, TelemetryCapture } from './telemetry.js';
 
 /**
@@ -20,7 +21,7 @@ export interface TelemetryPersistenceConfig {
  * Default configuration
  */
 const DEFAULT_CONFIG: TelemetryPersistenceConfig = {
-  baseDir: '/tmp/evolution_tests/telemetry',
+  baseDir: path.join(os.tmpdir(), 'evolution_tests', 'telemetry'),
   maxAge: 24 * 60 * 60 * 1000, // 24 hours
   autoCleanup: true
 };

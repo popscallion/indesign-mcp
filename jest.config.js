@@ -15,5 +15,5 @@ export default {
     ],
   },
   testMatch: ['**/tests/**/*.test.ts', '**/tests/**/*.spec.ts'],
-  testPathIgnorePatterns: ['/toolModifier.regex.backup.ts$', '/resources.test.ts$'],
+  testPathIgnorePatterns: [],
 };

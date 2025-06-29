@@ -8,15 +8,27 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
   server.tool(
     "auto_flow_text",
     {
-      text: z.string().describe("Text to flow into document"),
-      startPage: z.number().default(1).describe("Page number to start flow (1-based)"),
-      style: z.string().optional().describe("Paragraph style to apply to story"),
-      addPages: z.boolean().default(true).describe("Automatically add pages until overset resolved"),
+      text: z.string().min(1).describe("Text to flow into document (must not be empty)"),
+      startPage: z.number().int().min(1).default(1).describe("Page number to start flow (1-based, must be positive integer)"),
+      style: z.string().optional().describe("Paragraph style to apply to newly added text only (preserves existing formatting)"),
+      addPages: z.boolean().default(true).describe("Automatically add pages with consistent margins/layout until overflow resolved"),
+      maxPages: z.number().int().min(1).max(50).default(20).describe("Maximum number of pages to add (safety limit, 1-50)"),
+      preserveExisting: z.boolean().default(true).describe("If true, append to existing text; if false, replace frame content"),
       dry_run: z.boolean().default(false).describe("If true, simulate without changing the document")
     },
-    withChangeTracking(server, "auto_flow_text")(async ({ text, startPage, style, addPages, dry_run }: any, progressLogger: any): Promise<{ content: TextContent[] }> => {
+    withChangeTracking(server, "auto_flow_text")(async ({ text, startPage, style, addPages, maxPages, preserveExisting, dry_run }: any, progressLogger: any): Promise<{ content: TextContent[] }> => {
+      // Enhanced parameter validation
+      if (!text || text.trim().length === 0) {
+        return { content:[{ type:"text", text:"auto_flow_text error: text parameter cannot be empty" }] };
+      }
+      
+      if (startPage < 1 || !Number.isInteger(startPage)) {
+        return { content:[{ type:"text", text:"auto_flow_text error: startPage must be a positive integer" }] };
+      }
+      
       if (dry_run) {
-        return { content:[{ type:"text", text:`[dry_run] Would flow text starting at page ${startPage}` }] };
+        const preview = text.length > 100 ? text.substring(0, 100) + "..." : text;
+        return { content:[{ type:"text", text:`[dry_run] Would flow ${text.length} characters starting at page ${startPage}${style ? ` with style "${style}"` : ""}. Max pages: ${maxPages}. ${preserveExisting ? "Append to" : "Replace"} existing text. Preview: "${preview}"` }] };
       }
       
       await progressLogger.log("Starting text flow operation", { current: 0, total: 4 });
@@ -31,51 +43,218 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
         var doc = app.activeDocument;
         if (doc.pages.length < ${startPage}) { throw new Error('startPage out of range'); }
 
-        // Helper to get or create a text frame on a page
-        function ensureFrame(p) {
-          if (p.textFrames.length > 0) return p.textFrames[0];
-          var b = p.bounds; // [y1,x1,y2,x2]
-          var tf = p.textFrames.add({ geometricBounds:[b[0]+24, b[1]+24, b[2]-24, b[3]-24] });
+        // Helper to calculate smart frame bounds based on page margins
+        function calculateFrameBounds(page) {
+          var pageMargins = page.marginPreferences;
+          var pageBounds = page.bounds; // [y1,x1,y2,x2]
+          
+          // Use page margins if available, otherwise fallback to reasonable defaults
+          var topMargin = pageMargins.top || 36; // 0.5 inches default
+          var leftMargin = pageMargins.left || 36;
+          var bottomMargin = pageMargins.bottom || 36;  
+          var rightMargin = pageMargins.right || 36;
+          
+          return [
+            pageBounds[0] + topMargin,    // top
+            pageBounds[1] + leftMargin,   // left  
+            pageBounds[2] - bottomMargin, // bottom
+            pageBounds[3] - rightMargin   // right
+          ];
+        }
+
+        // Helper to get or create a text frame on a page with smart sizing
+        function ensureFrame(p, referenceBounds) {
+          // Look for existing threaded frames first
+          for (var i = 0; i < p.textFrames.length; i++) {
+            var existingFrame = p.textFrames[i];
+            if (existingFrame.previousTextFrame || existingFrame.nextTextFrame) {
+              return existingFrame; // Use existing threaded frame
+            }
+          }
+          
+          // Look for empty frames that can be used
+          for (var i = 0; i < p.textFrames.length; i++) {
+            var existingFrame = p.textFrames[i];
+            if (existingFrame.contents.length === 0) {
+              return existingFrame;
+            }
+          }
+          
+          // Create new frame with smart bounds
+          var frameBounds = referenceBounds || calculateFrameBounds(p);
+          var tf = p.textFrames.add({ geometricBounds: frameBounds });
           return tf;
         }
 
         var page = doc.pages[${startPage-1}];
-        var frame = ensureFrame(page);
-        frame.contents = "${escText}";
+        var initialFrameBounds = calculateFrameBounds(page);
+        var frame = ensureFrame(page, initialFrameBounds);
+        
+        // Handle existing content based on preserveExisting setting
+        var originalContent = ${preserveExisting} ? frame.contents : "";
+        frame.contents = originalContent + "${escText}";
+        
         if ("${escStyle}" !== "") {
-          try { frame.paragraphs.everyItem().appliedParagraphStyle = doc.paragraphStyles.itemByName("${escStyle}"); } catch(e) {}
+          try { 
+            // Apply style only to newly added text, not existing content
+            var style = doc.paragraphStyles.itemByName("${escStyle}");
+            if (style.isValid) {
+              // Apply to last paragraph(s) that contain the new text
+              var textLength = "${escText}".length;
+              if (textLength > 0 && frame.contents.length >= textLength) {
+                var startPos = frame.contents.length - textLength;
+                var textRange = frame.characters.itemByRange(startPos, -1);
+                textRange.paragraphs.everyItem().appliedParagraphStyle = style;
+              }
+            }
+          } catch(e) {
+            // Style application failed, continue without styling
+          }
         }
 
         var pagesAdded = 0;
         var iterations = 0;
-        while (frame.overflows && ${addPages} && iterations < 50) {
-          var newPage = doc.pages.add(LocationOptions.AT_END);
-          pagesAdded++;
+        var maxIterations = Math.min(${maxPages || 20}, 20); // Use maxPages parameter with safety limit
+        var threadedFrames = [frame]; // Track all frames in the chain
+        
+        while (frame.overflows && ${addPages} && iterations < maxIterations) {
           iterations++;
-          var newFrame = newPage.textFrames.add({ geometricBounds: frame.geometricBounds });
-          frame.nextTextFrame = newFrame;
-          frame = newFrame;
+          
+          // Insert new page after current page sequence (not at end)
+          var currentPageIndex = page.documentOffset;
+          var insertIndex = currentPageIndex + pagesAdded;
+          var newPage;
+          
+          try {
+            if (insertIndex >= doc.pages.length - 1) {
+              newPage = doc.pages.add(LocationOptions.AT_END);
+            } else {
+              newPage = doc.pages.add(LocationOptions.AFTER, doc.pages[insertIndex]);
+            }
+            pagesAdded++;
+          } catch (e) {
+            // Page creation failed
+            break;
+          }
+          
+          // Copy page setup from original page
+          try {
+            newPage.marginPreferences.top = page.marginPreferences.top;
+            newPage.marginPreferences.left = page.marginPreferences.left;
+            newPage.marginPreferences.bottom = page.marginPreferences.bottom;
+            newPage.marginPreferences.right = page.marginPreferences.right;
+          } catch (e) {
+            // Margin copying failed, continue with defaults
+          }
+          
+          // Create new frame with consistent bounds
+          var newFrame;
+          try {
+            // Recalculate bounds per new page in case of different margins
+            var newBounds = calculateFrameBounds(newPage);
+            newFrame = ensureFrame(newPage, newBounds);
+            
+            // Verify threading compatibility before linking
+            if (frame.nextTextFrame === null && newFrame.previousTextFrame === null) {
+              frame.nextTextFrame = newFrame;
+              threadedFrames.push(newFrame);
+              
+              // Verify threading worked
+              if (frame.nextTextFrame !== newFrame) {
+                // Threading failed, break the loop
+                break;
+              }
+              
+              frame = newFrame;
+            } else {
+              // Cannot thread, frame already has connections
+              break;
+            }
+          } catch (e) {
+            // Frame creation or threading failed
+            break;
+          }
+          
+          // Break out early if we keep adding pages but the story still oversets after a few iterations
+          if (iterations >= 3 && frame.parentStory.overflows) {
+              break;
+          }
         }
-        JSON.stringify({ pagesAdded: pagesAdded, overflowResolved: !frame.overflows });
+        
+        // Final validation
+        var totalThreadedFrames = threadedFrames.length;
+        var overflowResolved = !frame.overflows;
+        var warningMessage = "";
+        
+        if (iterations >= maxIterations) {
+          warningMessage = "Reached maximum iteration limit";
+        }
+        if (!overflowResolved && pagesAdded > 0) {
+          warningMessage = warningMessage ? warningMessage + "; Text still overflows after adding pages" : "Text still overflows after adding pages";
+        }
+        
+        JSON.stringify({ 
+          pagesAdded: pagesAdded, 
+          overflowResolved: overflowResolved,
+          threadedFrames: totalThreadedFrames,
+          iterations: iterations,
+          warning: warningMessage
+        });
       `;
       
       await progressLogger.log("Applying style and threading pages", { current: 2, total: 4 });
       
       const res = await executeExtendScript(jsx);
       if (!res.success) {
-        return { content:[{ type:"text", text:`Error: ${res.error}` }] };
+        return { content:[{ type:"text", text:`auto_flow_text failed: ${res.error}` }] };
       }
       
       await progressLogger.log("Finalizing text flow", { current: 3, total: 4 });
       
-      const result = JSON.parse(res.result!);
-      if (result.pagesAdded > 0) {
-        await progressLogger.log(`Added ${result.pagesAdded} pages to resolve overflow`, { current: 4, total: 4 });
-      } else {
-        await progressLogger.log("Text fit in existing frames", { current: 4, total: 4 });
+      try {
+        const result = JSON.parse(res.result!);
+        
+        // Enhanced result reporting
+        let statusMessage = "";
+        let successLevel = "success";
+        
+        if (result.overflowResolved) {
+          if (result.pagesAdded > 0) {
+            statusMessage = `Text flow completed successfully. Added ${result.pagesAdded} pages with ${result.threadedFrames} threaded frames.`;
+            await progressLogger.log(`Added ${result.pagesAdded} pages to resolve overflow`, { current: 4, total: 4 });
+          } else {
+            statusMessage = `Text flow completed successfully. Text fit in existing ${result.threadedFrames} frame(s).`;
+            await progressLogger.log("Text fit in existing frames", { current: 4, total: 4 });
+          }
+        } else {
+          successLevel = "warning";
+          if (result.pagesAdded > 0) {
+            statusMessage = `Text flow partially completed. Added ${result.pagesAdded} pages but text still overflows after ${result.iterations} iterations.`;
+          } else {
+            statusMessage = `Text flow could not resolve overflow. Text may be too large for frame size or contain unsupported formatting.`;
+          }
+          await progressLogger.log(`Overflow not fully resolved - ${result.warning || 'unknown issue'}`, { current: 4, total: 4 });
+        }
+        
+        if (result.warning) {
+          statusMessage += ` Warning: ${result.warning}`;
+        }
+        
+        // Return detailed status
+        const detailedResult = {
+          status: successLevel,
+          message: statusMessage,
+          pagesAdded: result.pagesAdded,
+          threadedFrames: result.threadedFrames,
+          overflowResolved: result.overflowResolved,
+          iterations: result.iterations
+        };
+        
+        return { content:[{ type:"text", text:`auto_flow_text ${successLevel}: ${JSON.stringify(detailedResult, null, 2)}` }] };
+        
+      } catch (parseError) {
+        return { content:[{ type:"text", text:`auto_flow_text completed but result parsing failed: ${res.result}. Parse error: ${parseError}` }] };
       }
-      
-      return { content:[{ type:"text", text:`auto_flow_text completed: ${res.result}` }] };
     })
   );
 

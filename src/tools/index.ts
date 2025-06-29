@@ -15,23 +15,10 @@ import { registerTransformTools } from "./transform/index.js";
 import { registerCompositeTools } from "./composite/index.js";
 import { registerAnalysisTools } from "./analysis/index.js";
 import { TelemetryCapture } from "./telemetry.js";
+import { isTelemetryEnabled, setTelemetryEnabled } from "./telemetryFlag.js";
 
-// Global flag to enable/disable telemetry
-let telemetryEnabled = false;
-
-/**
- * Enable or disable telemetry capture
- */
-export function setTelemetryEnabled(enabled: boolean) {
-  telemetryEnabled = enabled;
-}
-
-/**
- * Check if telemetry is enabled
- */
-export function isTelemetryEnabled(): boolean {
-  return telemetryEnabled;
-}
+// Export telemetry functions from the singleton module
+export { isTelemetryEnabled, setTelemetryEnabled } from "./telemetryFlag.js";
 
 /**
  * Wrap a tool handler with telemetry capture
@@ -46,17 +33,24 @@ export function wrapToolForTelemetry<T extends Record<string, any>>(
 ): (args: T) => Promise<any> {
   return async (args: T) => {
     // Auto-enable telemetry if evolution context detected
-    if (!telemetryEnabled && process.env.EVOLUTION_SESSION_ID) {
-      console.log(`📊 Evolution context detected - auto-enabling telemetry for tool: ${toolName}`);
-      telemetryEnabled = true;
+    if (!isTelemetryEnabled() && process.env.EVOLUTION_SESSION_ID) {
+      if (process.env.DEBUG_TELEMETRY) {
+        console.log(`📊 Evolution context detected - auto-enabling telemetry for tool: ${toolName}`);
+      }
+      setTelemetryEnabled(true);
       
-      // Auto-start session if needed
-      const agentId = process.env.TELEMETRY_AGENT_ID || 'task-agent';
-      const generation = parseInt(process.env.TELEMETRY_GENERATION || '0');
-      TelemetryCapture.getOrCreateSessionId(agentId, generation);
+      // Auto-start session if needed and no current session exists
+      if (!TelemetryCapture.getCurrentSession()) {
+        const agentId = process.env.TELEMETRY_AGENT_ID || 'task-agent';
+        const generation = parseInt(process.env.TELEMETRY_GENERATION || '0');
+        // Fire and forget - don't block the tool execution
+        TelemetryCapture.startSession(agentId, generation).catch(error => {
+          console.error(`📊 Failed to auto-start telemetry session: ${error}`);
+        });
+      }
     }
     
-    if (!telemetryEnabled) {
+    if (!isTelemetryEnabled()) {
       // Run without telemetry if disabled
       return handler(args);
     }
@@ -65,21 +59,25 @@ export function wrapToolForTelemetry<T extends Record<string, any>>(
     try {
       const result = await handler(args);
       
-      // Capture successful execution (async but don't await to avoid blocking)
-      await TelemetryCapture.capture(toolName, args, {
+      // Capture successful execution (fire and forget to avoid blocking)
+      TelemetryCapture.capture(toolName, args, {
         success: true,
         executionTime: Date.now() - startTime,
         data: result // Include result data for sanitization
+      }).catch(error => {
+        console.error(`📊 Failed to capture telemetry for ${toolName}: ${error}`);
       });
       
       return result;
     } catch (error) {
-      // Capture error (async but don't await to avoid blocking on error path)
+      // Capture error (fire and forget to avoid blocking on error path)
       const errorMessage = error instanceof Error ? error.message : String(error);
-      await TelemetryCapture.capture(toolName, args, {
+      TelemetryCapture.capture(toolName, args, {
         success: false,
         error: errorMessage,
         executionTime: Date.now() - startTime
+      }).catch(captureError => {
+        console.error(`📊 Failed to capture error telemetry for ${toolName}: ${captureError}`);
       });
       
       // Re-throw the error

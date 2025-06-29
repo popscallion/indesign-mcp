@@ -134,6 +134,37 @@ export class McpBridge {
           }
         }
         
+        // Remove custom paragraph styles (keep built-in ones)
+        for (var ps = doc.paragraphStyles.length - 1; ps >= 0; ps--) {
+          var style = doc.paragraphStyles[ps];
+          try {
+            // Only remove custom styles, not built-in ones like [No Paragraph Style], [Basic Paragraph]
+            if (style.name !== "[No Paragraph Style]" && 
+                style.name !== "[Basic Paragraph]" &&
+                style.name !== "NormalParagraphStyle" &&
+                !style.name.match(/^\\[.*\\]$/)) {
+              style.remove();
+            }
+          } catch (e) {
+            // Style might be in use or protected
+          }
+        }
+        
+        // Remove custom character styles (keep built-in ones)
+        for (var cs = doc.characterStyles.length - 1; cs >= 0; cs--) {
+          var charStyle = doc.characterStyles[cs];
+          try {
+            // Only remove custom styles, not built-in ones like [None]
+            if (charStyle.name !== "[None]" && 
+                charStyle.name !== "NormalCharacterStyle" &&
+                !charStyle.name.match(/^\\[.*\\]$/)) {
+              charStyle.remove();
+            }
+          } catch (e) {
+            // Style might be in use or protected
+          }
+        }
+        
         "Document cleared successfully";
       }
     `;
@@ -176,6 +207,9 @@ export class McpBridge {
     // Let's use the ExtendScript template directly
     const { generateVisualAttributesExtraction } = await import('../../tools/analysis/extendscript-templates.js');
     const script = generateVisualAttributesExtraction(pageNumber, true, true);
+    
+    // Debug: Log the generated script
+    console.log('Generated ExtendScript:', script.substring(0, 500) + '...');
     
     const result = await executeExtendScript(script);
     

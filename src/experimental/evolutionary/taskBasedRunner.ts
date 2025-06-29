@@ -42,7 +42,7 @@ export class TaskBasedRunner {
     
     // Pre-enable telemetry for evolution tests
     console.log('📊 Pre-enabling telemetry for evolutionary testing...');
-    const { setTelemetryEnabled } = await import('../../tools/index.js');
+    const { setTelemetryEnabled } = await import('../../tools/telemetryFlag.js');
     setTelemetryEnabled(true);
     console.log('📊 Telemetry pre-enabled for evolution context');
     
@@ -74,7 +74,7 @@ export class TaskBasedRunner {
    */
   async validateTelemetryHealth(): Promise<{ healthy: boolean; issues: string[] }> {
     const issues: string[] = [];
-    const { isTelemetryEnabled } = await import('../../tools/index.js');
+    const { isTelemetryEnabled } = await import('../../tools/telemetryFlag.js');
     const { TelemetryCapture } = await import('../../tools/telemetry.js');
     
     // Check telemetry flag
@@ -125,14 +125,7 @@ export class TaskBasedRunner {
    * 
    * This minimal approach reveals true MCP usability issues.
    */
-  async createTaskPrompt(config: TestConfig, agentId: string, sessionId: string): Promise<string> {
-    // Validate telemetry health before creating prompt
-    const healthCheck = await this.validateTelemetryHealth();
-    if (!healthCheck.healthy) {
-      console.warn(`📊 Telemetry health issues detected for ${agentId}:`);
-      healthCheck.issues.forEach(issue => console.warn(`   ${issue}`));
-    }
-    
+  createTaskPrompt(config: TestConfig, agentId: string, sessionId: string): string {
     // Set session ID in environment for Task agent coherence
     process.env.EVOLUTION_SESSION_ID = sessionId;
     
@@ -142,13 +135,15 @@ export class TaskBasedRunner {
     process.env.TELEMETRY_GENERATION = config.generation.toString();
     
     // Enhanced environment variable visibility (O3's suggestion)
-    console.log(`\n🔧 Environment Configuration for ${agentId}:`);
-    console.log(`   🔗 EVOLUTION_SESSION_ID: ${process.env.EVOLUTION_SESSION_ID}`);
-    console.log(`   📊 TELEMETRY_SESSION_ID: ${process.env.TELEMETRY_SESSION_ID}`);
-    console.log(`   👤 TELEMETRY_AGENT_ID: ${process.env.TELEMETRY_AGENT_ID}`);
-    console.log(`   🧬 TELEMETRY_GENERATION: ${process.env.TELEMETRY_GENERATION}`);
-    console.log(`   ⚙️  TELEMETRY_ENABLED: ${process.env.TELEMETRY_ENABLED || 'false'}`);
-    console.log(`   ⏱️  TELEMETRY_WAIT_TIMEOUT: ${this.config.timing.telemetryWaitTimeoutMs}ms`);
+    if (process.env.DEBUG_TELEMETRY) {
+      console.log(`\n🔧 Environment Configuration for ${agentId}:`);
+      console.log(`   🔗 EVOLUTION_SESSION_ID: ${process.env.EVOLUTION_SESSION_ID}`);
+      console.log(`   📊 TELEMETRY_SESSION_ID: ${process.env.TELEMETRY_SESSION_ID}`);
+      console.log(`   👤 TELEMETRY_AGENT_ID: ${process.env.TELEMETRY_AGENT_ID}`);
+      console.log(`   🧬 TELEMETRY_GENERATION: ${process.env.TELEMETRY_GENERATION}`);
+      console.log(`   ⚙️  TELEMETRY_ENABLED: ${process.env.TELEMETRY_ENABLED || 'false'}`);
+      console.log(`   ⏱️  TELEMETRY_WAIT_TIMEOUT: ${this.config.timing.telemetryWaitTimeoutMs}ms`);
+    }
     
     // Validate critical environment setup
     if (!process.env.EVOLUTION_SESSION_ID) {
@@ -165,7 +160,9 @@ export class TaskBasedRunner {
       testCase: config.testCase,
       sessionId
     };
-    console.log(`Creating prompt for ${agentId} (Gen ${config.generation}, Session: ${sessionId})`);
+    if (process.env.DEBUG_TELEMETRY) {
+      console.log(`Creating prompt for ${agentId} (Gen ${config.generation}, Session: ${sessionId})`);
+    }
     
     // Make session ID prominent
     let prompt = `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
@@ -200,10 +197,12 @@ export class TaskBasedRunner {
     const hasTelemetryEnd = prompt.includes('telemetry_end_session');
     const hasSessionId = prompt.includes(sessionId);
     
-    console.log(`📋 Prompt validation for ${agentId}:`);
-    console.log(`   ✓ Contains set_environment_variable: ${hasSetEnvVar}`);
-    console.log(`   ✓ Contains telemetry_end_session: ${hasTelemetryEnd}`);
-    console.log(`   ✓ Contains session ID: ${hasSessionId}`);
+    if (process.env.DEBUG_TELEMETRY) {
+      console.log(`📋 Prompt validation for ${agentId}:`);
+      console.log(`   ✓ Contains set_environment_variable: ${hasSetEnvVar}`);
+      console.log(`   ✓ Contains telemetry_end_session: ${hasTelemetryEnd}`);
+      console.log(`   ✓ Contains session ID: ${hasSessionId}`);
+    }
     
     if (!hasSetEnvVar || !hasTelemetryEnd) {
       console.warn(`⚠️  PROMPT VALIDATION FAILED: Missing critical telemetry instructions!`);
@@ -239,7 +238,7 @@ export class TaskBasedRunner {
       console.log('📊 Creating enhanced fallback telemetry from document state...');
       
       // Check if telemetry was ever enabled
-      const { isTelemetryEnabled } = await import('../../tools/index.js');
+      const { isTelemetryEnabled } = await import('../../tools/telemetryFlag.js');
       const wasEnabled = isTelemetryEnabled();
       console.log(`📊 Telemetry enabled status: ${wasEnabled}`);
       
@@ -251,7 +250,9 @@ export class TaskBasedRunner {
         const hasStyles = metrics.styles && metrics.styles.length > 0;
         const frameCount = metrics.frames.length;
         
-        console.log(`📊 Document analysis: ${frameCount} frames, ${totalText} chars, ${hasStyles ? 'has styles' : 'no styles'}`);
+        if (process.env.DEBUG_TELEMETRY) {
+          console.log(`📊 Document analysis: ${frameCount} frames, ${totalText} chars, ${hasStyles ? 'has styles' : 'no styles'}`);
+        }
         
         // Create intelligent synthetic session based on document analysis
         const fallbackCalls: any[] = [];
@@ -274,7 +275,9 @@ export class TaskBasedRunner {
         
         if (hasContent) {
           // Document structure analysis
-          console.log(`📊 Inferring workflow from document structure...`);
+          if (process.env.DEBUG_TELEMETRY) {
+            console.log(`📊 Inferring workflow from document structure...`);
+          }
           
           // Check page setup
           if (metrics.frames.length > 0) {

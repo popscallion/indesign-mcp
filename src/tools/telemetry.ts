@@ -110,29 +110,25 @@ export class TelemetryCapture {
                      process.env.SESSION_ID;
     
     if (sessionId) {
-      console.log(`📊 Found session ID in environment: ${sessionId}`);
-      
-      // Auto-start session if evolution context detected and no active session
-      if (!this.currentSession && !this.inSession) {
-        console.log(`📊 Evolution context detected - auto-starting telemetry session`);
-        // Don't await here to avoid blocking, but trigger the session start
-        this.startSession(agentId, generation).catch(error => {
-          console.error(`📊 Failed to auto-start telemetry session: ${error}`);
-        });
+      if (process.env.DEBUG_TELEMETRY) {
+        console.log(`📊 Found session ID in environment: ${sessionId}`);
       }
-      
       return sessionId;
     }
     
     // If no environment session ID, try to get from existing session
     if (this.currentSession) {
-      console.log(`📊 Using existing session ID: ${this.currentSession.id}`);
+      if (process.env.DEBUG_TELEMETRY) {
+        console.log(`📊 Using existing session ID: ${this.currentSession.id}`);
+      }
       return this.currentSession.id;
     }
     
     // Otherwise create a new one
     const newSessionId = `${Date.now()}-${agentId}-gen${generation}`;
-    console.log(`📊 Generated new session ID: ${newSessionId}`);
+    if (process.env.DEBUG_TELEMETRY) {
+      console.log(`📊 Generated new session ID: ${newSessionId}`);
+    }
     return newSessionId;
   }
   
@@ -272,8 +268,11 @@ export class TelemetryCapture {
       await this.endSession();
     }
     
-    // Use coherent session ID (from env or generate)
-    const sessionId = this.getOrCreateSessionId(agentId, generation);
+    // Generate session ID directly here to avoid recursion
+    const sessionId = process.env.EVOLUTION_SESSION_ID || 
+                     process.env.TELEMETRY_SESSION_ID ||
+                     process.env.SESSION_ID ||
+                     `${Date.now()}-${agentId}-gen${generation}`;
     
     this.currentSession = {
       id: sessionId,
@@ -289,8 +288,10 @@ export class TelemetryCapture {
     // Initialize telemetry directory if needed
     await this.initializeTelemetryDir();
     
-    console.log(`📊 Started telemetry session: ${sessionId} for ${agentId} (Generation ${generation})`);
-    console.log(`📊 Telemetry directory: ${this.telemetryDir}`);
+    if (process.env.DEBUG_TELEMETRY) {
+      console.log(`📊 Started telemetry session: ${sessionId} for ${agentId} (Generation ${generation})`);
+      console.log(`📊 Telemetry directory: ${this.telemetryDir}`);
+    }
     
     return sessionId;
   }

@@ -10,6 +10,8 @@ import { loadReferenceMetrics, getReferenceImagePath } from './metricsLoader.js'
 import { TestConfig, TestRun, GenerationResult } from './types.js';
 import { TelemetryCapture } from '../../tools/telemetry.js';
 import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 
 /**
  * Run a complete evolutionary test cycle
@@ -68,7 +70,7 @@ export async function runEvolutionTest(options: {
     }
     
     // 4.2. Verify telemetry directory
-    const telemetryDir = '/tmp/evolution_tests/telemetry';
+    const telemetryDir = path.join(os.tmpdir(), 'evolution_tests', 'telemetry');
     try {
       await fs.access(telemetryDir, fs.constants.W_OK);
       console.log('✓ Telemetry directory writable');

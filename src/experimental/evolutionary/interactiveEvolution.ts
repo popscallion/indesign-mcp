@@ -8,6 +8,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as os from 'os';
 import { TaskBasedRunner } from './taskBasedRunner.js';
 import { PatternAnalyzer } from './patternAnalyzer.js';
 import { ClaudeAnalyzer } from './claudeAnalyzer.js';
@@ -168,8 +169,15 @@ export class InteractiveEvolution {
     // Update config with current generation
     const config = { ...this.config, generation: this.currentGeneration };
     
+    // Validate telemetry health before creating prompt
+    const healthCheck = await this.runner.validateTelemetryHealth();
+    if (!healthCheck.healthy) {
+      console.warn(`📊 Telemetry health issues detected for ${agentId}:`);
+      healthCheck.issues.forEach(issue => console.warn(`   ${issue}`));
+    }
+    
     // Create prompt
-    const prompt = await this.runner.createTaskPrompt(config, agentId, sessionId);
+    const prompt = this.runner.createTaskPrompt(config, agentId, sessionId);
     
     console.log(`\n📋 Agent ${this.currentAgentIndex + 1} of ${this.config.agentCount}`);
     console.log(`🆔 Session ID: ${sessionId}`);
@@ -394,7 +402,7 @@ export class InteractiveEvolution {
       currentAgentIndex: this.currentAgentIndex
     };
     
-    const filepath = path.join('/tmp/evolution_tests', filename);
+    const filepath = path.join(path.join(os.tmpdir(), 'evolution_tests'), filename);
     await fs.mkdir(path.dirname(filepath), { recursive: true });
     await fs.writeFile(filepath, JSON.stringify(state, null, 2), 'utf-8');
     
@@ -405,7 +413,7 @@ export class InteractiveEvolution {
    * Load progress from file
    */
   async loadProgress(filename: string): Promise<void> {
-    const filepath = path.join('/tmp/evolution_tests', filename);
+    const filepath = path.join(path.join(os.tmpdir(), 'evolution_tests'), filename);
     
     try {
       const data = await fs.readFile(filepath, 'utf-8');
