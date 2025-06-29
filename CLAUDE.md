@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 🎯 Project Overview
 Building an **AI-driven InDesign automation platform** using TypeScript MCP (Model Context Protocol) server that bridges LLMs with Adobe InDesign via ExtendScript.
 
-**Current State**: Production-ready TypeScript MCP with 36 working tools + foundational resources/prompts
+**Current State**: Production-ready TypeScript MCP with 52 working tools + foundational resources/prompts
 **Goal**: Complete agentic workflow platform for two MVP scenarios:
 1. **Copy-Design** – Recreate reference page layouts from images
 2. **Add-Content** – Flow new text into existing documents while preserving design
@@ -81,7 +81,7 @@ npx tsx src/experimental/evolutionary/runEvolutionTest.ts  # Run the test orches
 
 ### Current Setup
 - **Repository**: `indesign-mcp` on GitHub
-- **Main Branch**: `main` (36+ working tools)
+- **Main Branch**: `main` (52 working tools)
 - **Development**: Feature branches for tier implementation
 
 ### Branch Strategy
@@ -130,9 +130,15 @@ This MCP server bridges AI assistants with Adobe InDesign via **ExtendScript aut
 - **Type Safety**: All parameters defined in `src/types.ts` interfaces
 - **Async Execution**: All handlers use `async/await` with proper error handling
 
+**Telemetry Architecture**:
+- **Always-Wrapped Tools**: All tools are pre-wrapped with telemetry capability
+- **Runtime Control**: Telemetry can be dynamically enabled/disabled via `set_environment_variable`
+- **Zero Overhead**: When disabled, telemetry wrapper adds only one boolean check per tool call
+- **File-Based Capture**: Telemetry writes to JSONL files for evolutionary testing analysis
+
 ### Testing Requirements
 - Test each tool with empty document and complex document
-- Verify no regressions in existing 35 tools
+- Verify no regressions in existing 52 tools
 - Integration testing for cross-tool workflows
 
 ## 🧪 Testing Strategy
@@ -176,7 +182,7 @@ Keep these test documents ready:
 
 ## 📊 Implementation Status
 
-### ✅ Completed (36 tools)
+### ✅ Completed (52 tools)
 - **Text Tools** (4): add_text, update_text, remove_text, get_document_text
 - **Style Tools** (8): paragraph/character style management, text selection
 - **Layout Tools** (3): text frame positioning, creation, and info
@@ -258,6 +264,7 @@ The evolutionary testing system automatically improves MCP tool descriptions bas
 - **Architecture**: Simplified Task-based approach using Claude Code
 - **Cost**: Zero API costs - uses Task tool only
 - **O3 Fixes**: ✅ All critical issues resolved (config fallback, document safety, telemetry robustness)
+- **Telemetry Architecture**: ✅ Fixed dynamic enable/disable capability with always-wrapped tools
 
 ### Quick Start Guides
 For running the evolutionary testing system:
@@ -275,6 +282,17 @@ For running the evolutionary testing system:
 2. Use the checklist for rapid execution
 3. See `EVOLUTIONARY-TEST-PROGRESS.md` for implementation details
 4. Reference `src/experimental/evolutionary/README-TASK-BASED.md` for conceptual overview
+
+### **⚠️ Critical Operational Requirements**
+- **Timeout Configuration**: Use `timeout 7m` for evolution commands (default 2min is insufficient)
+- **Single Instance Rule**: Create ONE evolution instance, never multiple competing `node -e` processes
+- **Never Skip processAgentCompletion()**: Contains document reset logic and fallback telemetry
+- **Environment Variables**: `TELEMETRY_WAIT_TIMEOUT` configures telemetry collection timeout (default 5min)
+
+### **Quick Troubleshooting**
+- Command timeout after 2min → Use `timeout 7m node -e "..."`
+- No telemetry found → System has fallback, still call `processAgentCompletion()`
+- Document contamination → Indicates `processAgentCompletion()` was skipped
 
 **Note on Minimal Prompts**: Task agents receive only "Recreate this academic book page layout in InDesign using the available MCP tools" plus a reference. This intentionally minimal approach:
 - Avoids telling agents they're being tested (Hawthorne effect)

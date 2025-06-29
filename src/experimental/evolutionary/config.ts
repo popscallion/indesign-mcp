@@ -22,6 +22,7 @@ export interface EvolutionTestConfig {
   timing: {
     defaultTimeoutMs: number;
     taskAgentTimeoutMs: number;
+    telemetryWaitTimeoutMs: number;
     delayBetweenAgentsMs: number;
   };
   
@@ -68,6 +69,7 @@ export const DEFAULT_CONFIG: EvolutionTestConfig = {
   timing: {
     defaultTimeoutMs: 120000, // 2 minutes
     taskAgentTimeoutMs: 180000, // 3 minutes for Task agents
+    telemetryWaitTimeoutMs: 300000, // 5 minutes for telemetry collection
     delayBetweenAgentsMs: 5000 // 5 seconds between agents
   },
   
@@ -137,6 +139,14 @@ export function loadConfigFromEnv(): Partial<EvolutionTestConfig> {
       config.timing = { ...DEFAULT_CONFIG.timing };
     }
     config.timing.defaultTimeoutMs = parseInt(process.env.EVOLUTION_TIMEOUT_MS, 10);
+  }
+  
+  // Check for telemetry wait timeout override
+  if (process.env.TELEMETRY_WAIT_TIMEOUT) {
+    if (!config.timing) {
+      config.timing = { ...DEFAULT_CONFIG.timing };
+    }
+    config.timing.telemetryWaitTimeoutMs = parseInt(process.env.TELEMETRY_WAIT_TIMEOUT, 10);
   }
   
   // Check for agent count override
