@@ -45,6 +45,17 @@ export function wrapToolForTelemetry<T extends Record<string, any>>(
   handler: (args: T) => Promise<any>
 ): (args: T) => Promise<any> {
   return async (args: T) => {
+    // Auto-enable telemetry if evolution context detected
+    if (!telemetryEnabled && process.env.EVOLUTION_SESSION_ID) {
+      console.log(`📊 Evolution context detected - auto-enabling telemetry for tool: ${toolName}`);
+      telemetryEnabled = true;
+      
+      // Auto-start session if needed
+      const agentId = process.env.TELEMETRY_AGENT_ID || 'task-agent';
+      const generation = parseInt(process.env.TELEMETRY_GENERATION || '0');
+      TelemetryCapture.getOrCreateSessionId(agentId, generation);
+    }
+    
     if (!telemetryEnabled) {
       // Run without telemetry if disabled
       return handler(args);

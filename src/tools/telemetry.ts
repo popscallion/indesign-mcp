@@ -48,37 +48,92 @@ export class TelemetryCapture {
   private static telemetryDir: string | null = null;
   private static fileWriteQueue: Promise<void> = Promise.resolve();
   private static pendingWrites: number = 0;
-  private static readonly FLUSH_THRESHOLD = 100; // Flush after 100 pending writes
+  private static readonly FLUSH_THRESHOLD = 10; // Flush after 10 pending writes (reduced for shorter Task sessions)
   
   /**
    * Initialize telemetry directory
    */
   static async initializeTelemetryDir(): Promise<void> {
+    if (this.telemetryDir) {
+      // Already initialized, verify it still exists
+      try {
+        await fs.access(this.telemetryDir, fs.constants.W_OK);
+        return;
+      } catch (error) {
+        console.warn(`📊 Telemetry directory no longer accessible: ${this.telemetryDir}, reinitializing...`);
+      }
+    }
+
     try {
       // Try to get config from evolutionary test system
       const config = getConfig();
       this.telemetryDir = config.paths.telemetryDir;
+      console.log(`📊 Using evolutionary test telemetry directory: ${this.telemetryDir}`);
     } catch (error) {
-      // Fallback to default directory if not in evolutionary test context
-      this.telemetryDir = path.join(process.cwd(), 'telemetry');
-      console.warn('Failed to get evolutionary test config, using fallback telemetry directory:', this.telemetryDir);
+      // Fallback to multiple possible locations
+      const fallbackDirs = [
+        '/tmp/evolution_tests/telemetry',
+        path.join(process.cwd(), 'telemetry'),
+        path.join(process.cwd(), 'tmp', 'telemetry')
+      ];
+      
+      for (const dir of fallbackDirs) {
+        try {
+          await fs.mkdir(dir, { recursive: true });
+          await fs.access(dir, fs.constants.W_OK);
+          this.telemetryDir = dir;
+          console.warn(`📊 Using fallback telemetry directory: ${this.telemetryDir}`);
+          break;
+        } catch (fallbackError) {
+          console.warn(`📊 Failed to create/access directory ${dir}: ${fallbackError}`);
+        }
+      }
+      
+      if (!this.telemetryDir) {
+        throw new Error('Could not initialize any telemetry directory');
+      }
     }
     
-    // Ensure directory exists
+    // Ensure directory exists and is writable
     await fs.mkdir(this.telemetryDir, { recursive: true });
+    await fs.access(this.telemetryDir, fs.constants.W_OK);
+    console.log(`📊 Telemetry directory initialized: ${this.telemetryDir}`);
   }
   
   /**
    * Get or set session ID from environment (for Task agent coherence)
    */
   static getOrCreateSessionId(agentId: string, generation: number): string {
-    // Check if session ID was passed via environment
-    if (process.env.EVOLUTION_SESSION_ID) {
-      return process.env.EVOLUTION_SESSION_ID;
+    // Check multiple environment variable sources for robustness
+    const sessionId = process.env.EVOLUTION_SESSION_ID || 
+                     process.env.TELEMETRY_SESSION_ID ||
+                     process.env.SESSION_ID;
+    
+    if (sessionId) {
+      console.log(`📊 Found session ID in environment: ${sessionId}`);
+      
+      // Auto-start session if evolution context detected and no active session
+      if (!this.currentSession && !this.inSession) {
+        console.log(`📊 Evolution context detected - auto-starting telemetry session`);
+        // Don't await here to avoid blocking, but trigger the session start
+        this.startSession(agentId, generation).catch(error => {
+          console.error(`📊 Failed to auto-start telemetry session: ${error}`);
+        });
+      }
+      
+      return sessionId;
+    }
+    
+    // If no environment session ID, try to get from existing session
+    if (this.currentSession) {
+      console.log(`📊 Using existing session ID: ${this.currentSession.id}`);
+      return this.currentSession.id;
     }
     
     // Otherwise create a new one
-    return `${Date.now()}-${agentId}-gen${generation}`;
+    const newSessionId = `${Date.now()}-${agentId}-gen${generation}`;
+    console.log(`📊 Generated new session ID: ${newSessionId}`);
+    return newSessionId;
   }
   
   /**
@@ -98,16 +153,26 @@ export class TelemetryCapture {
     // Queue the write to avoid race conditions
     this.fileWriteQueue = this.fileWriteQueue.then(async () => {
       try {
+        // Verify directory exists before write
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        
+        // Add detailed logging for debugging
+        console.log(`📊 Writing telemetry call: ${call.tool} to ${filePath}`);
+        
         await this.writeWithRetry(filePath, JSON.stringify(call) + '\n');
         this.pendingWrites--;
+        
+        console.log(`📊 Successfully wrote telemetry call for ${sessionId} (${this.pendingWrites} pending)`);
       } catch (error) {
-        console.error(`Failed to persist telemetry after retries: ${error}`);
+        console.error(`📊 Failed to persist telemetry after retries: ${error}`);
+        console.error(`📊 File path: ${filePath}, Session: ${sessionId}, Tool: ${call.tool}`);
         this.pendingWrites--;
       }
     });
     
     // Check if we need to flush the queue
     if (this.pendingWrites >= this.FLUSH_THRESHOLD) {
+      console.log(`📊 Reaching flush threshold (${this.pendingWrites}), flushing write queue...`);
       await this.flushWriteQueue();
     }
     
@@ -129,39 +194,50 @@ export class TelemetryCapture {
   private static async writeWithRetry(
     filePath: string, 
     data: string, 
-    maxRetries: number = 3
+    maxRetries: number = 5
   ): Promise<void> {
-    const delays = [100, 300, 900]; // Exponential backoff in ms
+    const delays = [100, 200, 500, 1000, 2000]; // Exponential backoff in ms
+    let lastError: Error | null = null;
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        await fs.appendFile(filePath, data, 'utf8');
+        // Verify parent directory exists before each attempt
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        
+        // Use exclusive write check to prevent corruption
+        try {
+          await fs.access(filePath, fs.constants.F_OK);
+          // File exists, append normally
+          await fs.appendFile(filePath, data, 'utf8');
+        } catch (accessError) {
+          // File doesn't exist, create it
+          await fs.writeFile(filePath, data, 'utf8');
+        }
+        
         return; // Success
       } catch (error: any) {
+        lastError = error;
         const isRetryable = error.code === 'ENOENT' || 
                           error.code === 'EBUSY' || 
-                          error.code === 'EACCES';
+                          error.code === 'EACCES' ||
+                          error.code === 'EMFILE' ||  // Too many open files
+                          error.code === 'EAGAIN';    // Resource temporarily unavailable
         
         if (!isRetryable || attempt === maxRetries) {
           // Not retryable or out of retries
+          console.error(`📊 Telemetry write failed permanently after ${attempt + 1} attempts: ${error.code} - ${error.message}`);
           throw error;
         }
         
         // Wait before retry
-        const delay = delays[attempt] || 1000;
-        console.warn(`Telemetry write failed (${error.code}), retrying in ${delay}ms...`);
+        const delay = delays[attempt] || 2000;
+        console.warn(`📊 Telemetry write failed (${error.code}), attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        
-        // For ENOENT, try to recreate the directory
-        if (error.code === 'ENOENT') {
-          try {
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-          } catch (mkdirError) {
-            // Ignore mkdir errors, will retry write anyway
-          }
-        }
       }
     }
+    
+    // Should never reach here, but just in case
+    throw lastError || new Error('Write failed for unknown reason');
   }
   
   /**
@@ -192,7 +268,7 @@ export class TelemetryCapture {
    */
   static async startSession(agentId: string, generation: number): Promise<string> {
     if (this.inSession) {
-      console.warn('Warning: Attempted to start session while another is active. Ending previous session.');
+      console.warn('📊 Warning: Attempted to start session while another is active. Ending previous session.');
       await this.endSession();
     }
     
@@ -213,6 +289,9 @@ export class TelemetryCapture {
     // Initialize telemetry directory if needed
     await this.initializeTelemetryDir();
     
+    console.log(`📊 Started telemetry session: ${sessionId} for ${agentId} (Generation ${generation})`);
+    console.log(`📊 Telemetry directory: ${this.telemetryDir}`);
+    
     return sessionId;
   }
   
@@ -220,20 +299,37 @@ export class TelemetryCapture {
    * End the current telemetry session
    */
   static async endSession(): Promise<TelemetrySession | null> {
-    if (!this.currentSession || !this.inSession) return null;
+    if (!this.currentSession || !this.inSession) {
+      console.warn('📊 Attempted to end session but no active session found');
+      return null;
+    }
     
     this.currentSession.endTime = Date.now();
     this.currentSession.calls = [...this.calls];
     const session = this.currentSession;
     
+    const duration = (session.endTime || Date.now()) - session.startTime;
+    console.log(`📊 Ending telemetry session: ${session.id}`);
+    console.log(`📊 Session duration: ${Math.round(duration / 1000)}s, Calls captured: ${session.calls.length}`);
+    
     // Write session completion sentinel
-    await this.writeSessionComplete(session.id);
+    try {
+      await this.writeSessionComplete(session.id);
+      console.log(`📊 Session completion sentinel written for ${session.id}`);
+    } catch (error) {
+      console.error(`📊 Failed to write session completion sentinel: ${error}`);
+      throw error;
+    }
+    
+    // Flush any pending writes
+    await this.flushWriteQueue();
     
     // Reset for next session
     this.currentSession = null;
     this.calls = [];
     this.inSession = false;
     
+    console.log(`📊 Session ${session.id} ended successfully`);
     return session;
   }
   
@@ -487,37 +583,69 @@ export class TelemetryCapture {
   /**
    * Wait for session completion sentinel
    */
-  static async waitForSessionComplete(sessionId: string, timeout: number = 30000): Promise<boolean> {
+  static async waitForSessionComplete(sessionId: string, timeout: number = 300000): Promise<boolean> {
     if (!this.telemetryDir) {
       await this.initializeTelemetryDir();
     }
     
+    // Make timeout configurable via environment
+    const configuredTimeout = parseInt(process.env.TELEMETRY_WAIT_TIMEOUT || timeout.toString());
+    const progressInterval = parseInt(process.env.TELEMETRY_PROGRESS_INTERVAL || '15000'); // 15s default
+    const checkInterval = parseInt(process.env.TELEMETRY_CHECK_INTERVAL || '500'); // 0.5s default
+    
+    console.log(`📊 Waiting for session completion: ${sessionId} (timeout: ${configuredTimeout}ms)`);
+    
     const filePath = path.join(this.telemetryDir!, `${sessionId}.jsonl`);
     const startTime = Date.now();
     let lastProgressTime = startTime;
+    let lastFileSize = 0;
+    let noActivityCount = 0;
     
-    while (Date.now() - startTime < timeout) {
+    while (Date.now() - startTime < configuredTimeout) {
       try {
         const content = await fs.readFile(filePath, 'utf8');
+        
+        // Check for session completion sentinel
         if (content.includes('"type":"session-complete"')) {
+          console.log(`📊 Session completion sentinel found for ${sessionId}`);
           return true;
         }
+        
+        // Track file activity to detect stuck agents
+        const currentSize = content.length;
+        if (currentSize === lastFileSize) {
+          noActivityCount++;
+        } else {
+          noActivityCount = 0;
+          lastFileSize = currentSize;
+        }
+        
+        // If no activity for 60 checks (30s), warn but continue
+        if (noActivityCount >= 60) {
+          console.warn(`📊 No telemetry activity for ${sessionId} in 30s, agent may be stuck`);
+          noActivityCount = 0; // Reset to avoid spam
+        }
+        
       } catch (e) {
         // File might not exist yet
+        if ((e as any).code !== 'ENOENT') {
+          console.warn(`📊 Error reading telemetry file for ${sessionId}: ${e}`);
+        }
       }
       
-      // Show progress every 30 seconds
-      if (Date.now() - lastProgressTime > 30000) {
+      // Show progress at configurable intervals
+      if (Date.now() - lastProgressTime > progressInterval) {
         const elapsed = Math.round((Date.now() - startTime) / 1000);
-        const remaining = Math.round((timeout - (Date.now() - startTime)) / 1000);
-        console.log(`   ...waiting for telemetry (${elapsed}s elapsed, ${remaining}s remaining)`);
+        const remaining = Math.round((configuredTimeout - (Date.now() - startTime)) / 1000);
+        console.log(`📊 Waiting for ${sessionId} telemetry... (${elapsed}s elapsed, ${remaining}s remaining)`);
         lastProgressTime = Date.now();
       }
       
       // Wait a bit before checking again
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, checkInterval));
     }
     
+    console.warn(`📊 Timeout waiting for session completion: ${sessionId} after ${configuredTimeout}ms`);
     return false;
   }
   
@@ -556,6 +684,72 @@ export class TelemetryCapture {
     }
   }
   
+  /**
+   * Get telemetry system health status for debugging
+   */
+  static getHealthStatus(): {
+    systemStatus: string;
+    telemetryDir: string | null;
+    currentSession: any;
+    pendingWrites: number;
+    sessionsCount: number;
+    callsCount: number;
+    environment: Record<string, string | undefined>;
+  } {
+    return {
+      systemStatus: this.inSession ? 'active' : 'idle',
+      telemetryDir: this.telemetryDir,
+      currentSession: this.currentSession ? {
+        id: this.currentSession.id,
+        agentId: this.currentSession.agentId,
+        generation: this.currentSession.generation,
+        callsCount: this.currentSession.calls.length,
+        startTime: new Date(this.currentSession.startTime).toISOString()
+      } : null,
+      pendingWrites: this.pendingWrites,
+      sessionsCount: this.sessions.size,
+      callsCount: this.calls.length,
+      environment: {
+        EVOLUTION_SESSION_ID: process.env.EVOLUTION_SESSION_ID,
+        TELEMETRY_SESSION_ID: process.env.TELEMETRY_SESSION_ID,
+        TELEMETRY_AGENT_ID: process.env.TELEMETRY_AGENT_ID,
+        TELEMETRY_GENERATION: process.env.TELEMETRY_GENERATION,
+        TELEMETRY_WAIT_TIMEOUT: process.env.TELEMETRY_WAIT_TIMEOUT,
+        TELEMETRY_PROGRESS_INTERVAL: process.env.TELEMETRY_PROGRESS_INTERVAL,
+        TELEMETRY_CHECK_INTERVAL: process.env.TELEMETRY_CHECK_INTERVAL
+      }
+    };
+  }
+
+  /**
+   * Debug method to log current telemetry state
+   */
+  static logDebugInfo(): void {
+    const health = this.getHealthStatus();
+    console.log('📊 === Telemetry Debug Info ===');
+    console.log(`📊 System Status: ${health.systemStatus}`);
+    console.log(`📊 Telemetry Directory: ${health.telemetryDir}`);
+    console.log(`📊 Current Session: ${health.currentSession ? 
+      `${health.currentSession.id} (${health.currentSession.callsCount} calls)` : 'None'}`);
+    console.log(`📊 Pending Writes: ${health.pendingWrites}`);
+    console.log(`📊 Total Sessions: ${health.sessionsCount}`);
+    console.log(`📊 Current Calls: ${health.callsCount}`);
+    console.log(`📊 Environment Variables:`);
+    Object.entries(health.environment).forEach(([key, value]) => {
+      if (value) console.log(`   ${key}=${value}`);
+    });
+    console.log('📊 === End Debug Info ===');
+  }
+
+  /**
+   * Flush all pending operations and log status
+   */
+  static async flushAndDebug(): Promise<void> {
+    console.log('📊 Flushing telemetry operations...');
+    await this.flushWriteQueue();
+    this.logDebugInfo();
+  }
+
   /**
    * Sanitize parameters to avoid storing sensitive or large data
    */

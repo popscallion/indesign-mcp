@@ -20,9 +20,28 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     async () => {
       try {
         const { TelemetryCapture } = await import('../telemetry.js');
+        const { isTelemetryEnabled } = await import('../index.js');
+        
+        // Detailed diagnostics before ending session
+        console.log('📊 Telemetry End Session Diagnostics:');
+        console.log(`   Telemetry Enabled: ${isTelemetryEnabled()}`);
+        
+        const health = TelemetryCapture.getHealthStatus();
+        console.log(`   System Status: ${health.systemStatus}`);
+        console.log(`   Current Session: ${health.currentSession ? health.currentSession.id : 'None'}`);
+        console.log(`   Captured Calls: ${health.callsCount}`);
+        console.log(`   Pending Writes: ${health.pendingWrites}`);
+        
+        // Environment variable diagnostics
+        console.log('📊 Environment Variables:');
+        console.log(`   EVOLUTION_SESSION_ID: ${process.env.EVOLUTION_SESSION_ID || 'None'}`);
+        console.log(`   TELEMETRY_SESSION_ID: ${process.env.TELEMETRY_SESSION_ID || 'None'}`);
+        console.log(`   TELEMETRY_AGENT_ID: ${process.env.TELEMETRY_AGENT_ID || 'None'}`);
+        
         const session = await TelemetryCapture.endSession();
         
         if (session) {
+          console.log(`📊 Session ended successfully: ${session.id} with ${session.calls.length} calls`);
           return {
             content: [{
               type: "text",
@@ -30,14 +49,16 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
             }]
           };
         } else {
+          console.warn('📊 No active telemetry session found to end');
           return {
             content: [{
               type: "text",
-              text: "No active telemetry session to end."
+              text: "No active telemetry session to end. Check that telemetry was properly enabled with set_environment_variable."
             }]
           };
         }
       } catch (error) {
+        console.error('📊 Error ending telemetry session:', error);
         return {
           content: [{
             type: "text",
@@ -47,6 +68,52 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
       }
     }
   );
+
+  // Register set_environment_variable tool for runtime telemetry control
+  server.tool(
+    "set_environment_variable",
+    {
+      name: z.string().describe("Environment variable name"),
+      value: z.string().describe("Environment variable value (takes effect for subsequent tool calls)")
+    },
+    async (args) => {
+      // Set the environment variable
+      process.env[args.name] = args.value;
+      
+      // CRITICAL: Also flip the in-memory telemetry flag when enabling telemetry
+      if (args.name === 'TELEMETRY_ENABLED' && args.value === 'true') {
+        const { setTelemetryEnabled } = await import('../index.js');
+        const { TelemetryCapture } = await import('../telemetry.js');
+        
+        // Enable telemetry system
+        setTelemetryEnabled(true);
+        
+        // Auto-start session if evolution context detected
+        const sessionId = process.env.EVOLUTION_SESSION_ID || 
+                         process.env.TELEMETRY_SESSION_ID;
+        const agentId = process.env.TELEMETRY_AGENT_ID || 'task-agent';
+        const generation = parseInt(process.env.TELEMETRY_GENERATION || '0');
+        
+        if (sessionId) {
+          console.log(`📊 Evolution context detected - starting telemetry session: ${sessionId}`);
+          await TelemetryCapture.startSession(agentId, generation);
+          console.log(`📊 Telemetry session started for agent: ${agentId}, generation: ${generation}`);
+        } else {
+          console.log(`📊 Telemetry enabled but no evolution session ID found - will start session on first tool call`);
+        }
+      }
+      
+      return {
+        content: [{
+          type: "text",
+          text: `Environment variable ${args.name} set to: ${args.value}${
+            args.name === 'TELEMETRY_ENABLED' ? ' (telemetry capture enabled for subsequent tool calls)' : ''
+          }`
+        }]
+      };
+    }
+  );
+
   // Register thread_text_frames tool
   server.tool(
     "thread_text_frames",
