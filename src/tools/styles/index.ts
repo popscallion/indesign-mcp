@@ -139,14 +139,27 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
     }
   );
 
-  // Register apply_object_style tool
+  // Register enhanced apply_object_style tool
   server.tool(
     "apply_object_style",
     {
       style_name: z.string().describe("Name of the object style to apply"),
-      target_selection: z.enum(["selection", "all_objects", "by_layer"]).default("selection").describe("Target objects to apply style to"),
-      layer_name: z.string().optional().describe("Layer name when target_selection is 'by_layer'"),
-      page_range: z.union([z.literal("all"), z.array(z.number())]).default("all").describe("Pages to apply on (1-based page numbers or 'all')")
+      page_range: z.union([z.literal("all"), z.array(z.number())]).default("all").describe("Pages to apply on (1-based page numbers or 'all')"),
+      target_selection: z.enum(["all_objects", "selected", "by_criteria"]).default("selected").describe("Target objects to apply style to"),
+      selection_criteria: z.object({
+        object_type: z.union([z.array(z.string()), z.literal("all")]).default("all").describe("Object types: ['rectangle', 'textFrame', 'image'] or 'all'"),
+        layer_names: z.array(z.string()).optional().describe("Layer names to include (optional)"),
+        position_bounds: z.object({
+          x_min: z.number(),
+          x_max: z.number(), 
+          y_min: z.number(),
+          y_max: z.number()
+        }).optional().describe("Position bounds filter (optional)"),
+        has_fill: z.boolean().optional().describe("Filter by fill property (optional)"),
+        has_stroke: z.boolean().optional().describe("Filter by stroke property (optional)")
+      }).optional().describe("Advanced selection criteria when target_selection is 'by_criteria'"),
+      verbose_logging: z.boolean().default(false).describe("Enable detailed logging of operations"),
+      dry_run: z.boolean().default(false).describe("Preview what would be selected/changed without applying")
     },
     async (args) => {
       return await handleApplyObjectStyle(args);
@@ -924,11 +937,18 @@ async function handleListObjectStyles(_args: any): Promise<{ content: TextConten
 }
 
 async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent[] }> {
-  const { style_name, target_selection = "selection", layer_name, page_range = "all" } = args;
+  const { 
+    style_name, 
+    page_range = "all", 
+    target_selection = "selected",
+    selection_criteria = {},
+    verbose_logging = false,
+    dry_run = false
+  } = args;
   
   const styleName = escapeExtendScriptString(style_name);
-  const layerName = layer_name ? escapeExtendScriptString(layer_name) : "";
   const pageRangeJson = page_range === "all" ? "all" : JSON.stringify(page_range);
+  const criteriaJson = JSON.stringify(selection_criteria);
   
   const script = `
     if (app.documents.length === 0) {
@@ -948,10 +968,173 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
     
     var applied = 0;
     var errors = 0;
+    var skipped = 0;
     var results = [];
+    var detailedLog = [];
+    var skippedObjects = [];
+    var verboseLogging = ${verbose_logging};
+    var isDryRun = ${dry_run};
+    
+    // Helper function to check object type
+    function getObjectType(obj) {
+      try {
+        if (obj.constructor.name === "Rectangle") return "rectangle";
+        if (obj.constructor.name === "TextFrame") return "textFrame";
+        if (obj.constructor.name === "Image") return "image";
+        if (obj.constructor.name === "Oval") return "oval";
+        if (obj.constructor.name === "Polygon") return "polygon";
+        return obj.constructor.name.toLowerCase();
+      } catch (e) {
+        return "unknown";
+      }
+    }
+    
+    // Helper function to check if object matches criteria
+    function matchesCriteria(obj, criteria, pageNum) {
+      try {
+        var objType = getObjectType(obj);
+        
+        // Check object type
+        if (criteria.object_type !== "all" && criteria.object_type.length > 0) {
+          var typeMatches = false;
+          for (var t = 0; t < criteria.object_type.length; t++) {
+            if (objType === criteria.object_type[t].toLowerCase()) {
+              typeMatches = true;
+              break;
+            }
+          }
+          if (!typeMatches) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object type '" + objType + "' not in allowed types",
+              object_type: objType
+            });
+            return false;
+          }
+        }
+        
+        // Check layer
+        if (criteria.layer_names && criteria.layer_names.length > 0) {
+          var layerMatches = false;
+          var objLayerName = obj.itemLayer ? obj.itemLayer.name : "";
+          for (var l = 0; l < criteria.layer_names.length; l++) {
+            if (objLayerName === criteria.layer_names[l]) {
+              layerMatches = true;
+              break;
+            }
+          }
+          if (!layerMatches) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object layer '" + objLayerName + "' not in allowed layers",
+              object_type: objType
+            });
+            return false;
+          }
+        }
+        
+        // Check position bounds
+        if (criteria.position_bounds) {
+          var bounds = obj.geometricBounds;
+          var centerX = (bounds[1] + bounds[3]) / 2;
+          var centerY = (bounds[0] + bounds[2]) / 2;
+          
+          if (centerX < criteria.position_bounds.x_min || centerX > criteria.position_bounds.x_max ||
+              centerY < criteria.position_bounds.y_min || centerY > criteria.position_bounds.y_max) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object position outside bounds",
+              object_type: objType
+            });
+            return false;
+          }
+        }
+        
+        // Check fill property
+        if (criteria.has_fill !== null && criteria.has_fill !== undefined) {
+          var hasFill = false;
+          try {
+            hasFill = obj.fillColor && obj.fillColor.name !== "[None]";
+          } catch (e) {
+            // Ignore fill check errors
+          }
+          
+          if (criteria.has_fill && !hasFill) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object has no fill property",
+              object_type: objType
+            });
+            return false;
+          }
+          if (!criteria.has_fill && hasFill) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object has fill property when none expected",
+              object_type: objType
+            });
+            return false;
+          }
+        }
+        
+        // Check stroke property
+        if (criteria.has_stroke !== null && criteria.has_stroke !== undefined) {
+          var hasStroke = false;
+          try {
+            hasStroke = obj.strokeColor && obj.strokeColor.name !== "[None]" && obj.strokeWeight > 0;
+          } catch (e) {
+            // Ignore stroke check errors
+          }
+          
+          if (criteria.has_stroke && !hasStroke) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object has no stroke property",
+              object_type: objType
+            });
+            return false;
+          }
+          if (!criteria.has_stroke && hasStroke) {
+            skippedObjects.push({
+              page: pageNum,
+              reason: "Object has stroke property when none expected", 
+              object_type: objType
+            });
+            return false;
+          }
+        }
+        
+        return true;
+      } catch (e) {
+        skippedObjects.push({
+          page: pageNum,
+          reason: "Error checking criteria: " + e.message,
+          object_type: getObjectType(obj)
+        });
+        return false;
+      }
+    }
     
     try {
-      if ("${target_selection}" === "selection") {
+      var criteria = ${criteriaJson};
+      var targetPages = ${pageRangeJson};
+      var pagesToProcess = [];
+      
+      // Build page list
+      if (targetPages === "all") {
+        for (var p = 0; p < doc.pages.length; p++) {
+          pagesToProcess.push(doc.pages[p]);
+        }
+      } else {
+        for (var p = 0; p < targetPages.length; p++) {
+          var pageNum = targetPages[p];
+          if (pageNum > 0 && pageNum <= doc.pages.length) {
+            pagesToProcess.push(doc.pages[pageNum - 1]);
+          }
+        }
+      }
+      
+      if ("${target_selection}" === "selected") {
         // Apply to current selection
         if (app.selection.length === 0) {
           throw new Error("No objects selected. Please select objects or choose a different target.");
@@ -961,109 +1144,140 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
           try {
             var obj = app.selection[s];
             if (obj.hasOwnProperty('appliedObjectStyle')) {
-              obj.appliedObjectStyle = objectStyle;
+              if (!isDryRun) {
+                obj.appliedObjectStyle = objectStyle;
+              }
               applied++;
+              if (verboseLogging) {
+                detailedLog.push("Applied style to selected " + getObjectType(obj));
+              }
             }
           } catch (e) {
             errors++;
+            if (verboseLogging) {
+              detailedLog.push("Error applying to selected object: " + e.message);
+            }
           }
         }
         
-        results.push("Applied '" + "${styleName}" + "' to " + applied + " selected objects");
+        results.push((isDryRun ? "Would apply" : "Applied") + " '" + "${styleName}" + "' to " + applied + " selected objects");
         
       } else if ("${target_selection}" === "all_objects") {
         // Apply to all objects on specified pages
-        var targetPages = ${pageRangeJson};
-        var pagesToProcess = [];
-        
-        if (targetPages === "all") {
-          for (var p = 0; p < doc.pages.length; p++) {
-            pagesToProcess.push(doc.pages[p]);
-          }
-        } else {
-          for (var p = 0; p < targetPages.length; p++) {
-            var pageNum = targetPages[p];
-            if (pageNum > 0 && pageNum <= doc.pages.length) {
-              pagesToProcess.push(doc.pages[pageNum - 1]);
-            }
-          }
-        }
-        
         for (var p = 0; p < pagesToProcess.length; p++) {
           var page = pagesToProcess[p];
+          var pageNum = page.name || (p + 1).toString();
           var allItems = page.allPageItems;
+          var pageApplied = 0;
+          var pageTypes = [];
           
           for (var i = 0; i < allItems.length; i++) {
             try {
               var item = allItems[i];
+              var itemType = getObjectType(item);
+              
               if (item.hasOwnProperty('appliedObjectStyle')) {
-                item.appliedObjectStyle = objectStyle;
+                if (!isDryRun) {
+                  item.appliedObjectStyle = objectStyle;
+                }
                 applied++;
+                pageApplied++;
+                
+                // Track object types on this page
+                var typeFound = false;
+                for (var t = 0; t < pageTypes.length; t++) {
+                  if (pageTypes[t].type === itemType) {
+                    pageTypes[t].count++;
+                    typeFound = true;
+                    break;
+                  }
+                }
+                if (!typeFound) {
+                  pageTypes.push({type: itemType, count: 1});
+                }
               }
             } catch (e) {
               errors++;
             }
           }
-        }
-        
-        results.push("Applied '" + "${styleName}" + "' to " + applied + " objects across " + pagesToProcess.length + " pages");
-        
-      } else if ("${target_selection}" === "by_layer") {
-        if ("${layerName}" === "") {
-          throw new Error("Layer name is required when target_selection is 'by_layer'.");
-        }
-        
-        var targetLayer = doc.layers.itemByName("${layerName}");
-        if (!targetLayer.isValid) {
-          throw new Error("Layer '${layerName}' not found.");
-        }
-        
-        // Find all objects on this layer
-        var targetPages = ${pageRangeJson};
-        var pagesToProcess = [];
-        
-        if (targetPages === "all") {
-          for (var p = 0; p < doc.pages.length; p++) {
-            pagesToProcess.push(doc.pages[p]);
-          }
-        } else {
-          for (var p = 0; p < targetPages.length; p++) {
-            var pageNum = targetPages[p];
-            if (pageNum > 0 && pageNum <= doc.pages.length) {
-              pagesToProcess.push(doc.pages[pageNum - 1]);
+          
+          if (verboseLogging && pageApplied > 0) {
+            var typeStrs = [];
+            for (var t = 0; t < pageTypes.length; t++) {
+              typeStrs.push(pageTypes[t].count + " " + pageTypes[t].type + "(s)");
             }
+            detailedLog.push("Page " + pageNum + ": Found " + typeStrs.join(", "));
           }
         }
         
+        results.push((isDryRun ? "Would apply" : "Applied") + " '" + "${styleName}" + "' to " + applied + " objects across " + pagesToProcess.length + " pages");
+        
+      } else if ("${target_selection}" === "by_criteria") {
+        // Apply based on selection criteria
         for (var p = 0; p < pagesToProcess.length; p++) {
           var page = pagesToProcess[p];
+          var pageNum = parseInt(page.name) || (p + 1);
           var allItems = page.allPageItems;
+          var pageApplied = 0;
+          var pageSkipped = 0;
           
           for (var i = 0; i < allItems.length; i++) {
             try {
               var item = allItems[i];
-              if (item.itemLayer === targetLayer && item.hasOwnProperty('appliedObjectStyle')) {
-                item.appliedObjectStyle = objectStyle;
-                applied++;
+              
+              if (item.hasOwnProperty('appliedObjectStyle')) {
+                if (matchesCriteria(item, criteria, pageNum)) {
+                  if (!isDryRun) {
+                    item.appliedObjectStyle = objectStyle;
+                  }
+                  applied++;
+                  pageApplied++;
+                } else {
+                  pageSkipped++;
+                }
               }
             } catch (e) {
               errors++;
             }
           }
+          
+          if (verboseLogging) {
+            detailedLog.push("Page " + pageNum + ": " + (isDryRun ? "Would apply to " : "Applied to ") + pageApplied + " objects (" + pageSkipped + " skipped)");
+          }
         }
         
-        results.push("Applied '" + "${styleName}" + "' to " + applied + " objects on layer '" + "${layerName}" + "'");
+        results.push((isDryRun ? "Would apply" : "Applied") + " '" + "${styleName}" + "' to " + applied + " objects using criteria");
       }
       
       if (errors > 0) {
-        results.push("Errors encountered: " + errors + " objects could not be styled");
+        results.push("Errors encountered: " + errors + " objects could not be processed");
+      }
+      
+      if (skippedObjects.length > 0) {
+        results.push("Skipped objects: " + skippedObjects.length + " objects did not match criteria");
+      }
+      
+      // Build final output
+      var output = [];
+      output = output.concat(results);
+      
+      if (verboseLogging && detailedLog.length > 0) {
+        output.push("");
+        output.push("=== DETAILED LOG ===");
+        output = output.concat(detailedLog);
+      }
+      
+      if (isDryRun) {
+        output.push("");
+        output.push("=== DRY RUN COMPLETE ===");
+        output.push("No changes were made to the document.");
       }
       
     } catch (mainError) {
       throw new Error("Apply object style failed: " + mainError.message);
     }
     
-    results.join("\\\\n");
+    output.join("\\\\n");
   `;
   
   const result = await executeExtendScript(script);
