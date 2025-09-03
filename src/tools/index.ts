@@ -14,6 +14,7 @@ import { registerExportTools } from "./export/index.js";
 import { registerTransformTools } from "./transform/index.js";
 import { registerCompositeTools } from "./composite/index.js";
 import { registerAnalysisTools } from "./analysis/index.js";
+import { registerColorTools } from "./color/index.js";
 import { TelemetryCapture } from "./telemetry.js";
 import { isTelemetryEnabled, setTelemetryEnabled } from "./telemetryFlag.js";
 
@@ -118,6 +119,9 @@ export async function registerAllInDesignTools(server: McpServer): Promise<void>
     
     // Composite Macros
     await registerCompositeTools(server);
+    
+    // Color Management Tools (7 tools)
+    await registerColorTools(server);
     
     // Decision Analysis Tools
     await registerAnalysisTools(server);

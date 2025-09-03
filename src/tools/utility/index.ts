@@ -663,6 +663,184 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
       return { content:[{ type:"text", text: displayText }] };
     }
   );
+
+  // Register update_all_links tool
+  server.tool(
+    "update_all_links",
+    {
+      relink_missing: z.boolean().default(true).describe("Attempt to relink missing assets automatically"),
+      report_only: z.boolean().default(false).describe("Only report link status without updating")
+    },
+    async (args) => {
+      return await handleUpdateAllLinks(args);
+    }
+  );
+
+  // Register relink_assets tool
+  server.tool(
+    "relink_assets",
+    {
+      link_mappings: z.record(z.string()).describe("Object mapping old file paths to new file paths"),
+      search_directories: z.array(z.string()).optional().describe("Directories to search for missing assets"),
+      update_all_instances: z.boolean().default(true).describe("Update all instances of each asset")
+    },
+    async (args) => {
+      return await handleRelinkAssets(args);
+    }
+  );
+
+  // Register copy_object_across_pages tool
+  server.tool(
+    "copy_object_across_pages",
+    {
+      source_page: z.number().describe("Source page number (1-based)"),
+      target_pages: z.array(z.number()).describe("Target page numbers (1-based)"),
+      selection_criteria: z.object({
+        object_type: z.enum(["all", "text_frames", "images", "rectangles", "selected"]).default("selected").describe("Type of objects to copy"),
+        layer_name: z.string().optional().describe("Layer name to filter objects"),
+        position_filter: z.object({
+          x_range: z.tuple([z.number(), z.number()]).optional().describe("X position range [min, max]"),
+          y_range: z.tuple([z.number(), z.number()]).optional().describe("Y position range [min, max]")
+        }).optional().describe("Position-based filtering")
+      }).describe("Criteria for selecting objects to copy"),
+      positioning: z.object({
+        maintain_position: z.boolean().default(true).describe("Keep objects at same position"),
+        offset: z.object({
+          x: z.number().default(0),
+          y: z.number().default(0)
+        }).optional().describe("Offset to apply to copied objects")
+      }).default({ maintain_position: true }).describe("How to position copied objects")
+    },
+    async (args) => {
+      return await handleCopyObjectAcrossPages(args);
+    }
+  );
+
+  // Register create_master_page tool
+  server.tool(
+    "create_master_page",
+    {
+      master_name: z.string().describe("Name for the new master page spread"),
+      based_on: z.string().optional().describe("Name of existing master page to base this on (optional)"),
+      page_size: z.object({
+        width: z.number().describe("Page width in points"),
+        height: z.number().describe("Page height in points")
+      }).optional().describe("Custom page dimensions (uses document default if not specified)"),
+      margins: z.object({
+        top: z.number().describe("Top margin in points"),
+        left: z.number().describe("Left margin in points"),
+        bottom: z.number().describe("Bottom margin in points"),
+        right: z.number().describe("Right margin in points")
+      }).optional().describe("Master page margins")
+    },
+    async (args) => handleCreateMasterPage(args)
+  );
+
+  // Register apply_master_to_pages tool
+  server.tool(
+    "apply_master_to_pages",
+    {
+      master_name: z.string().describe("Name of the master page to apply"),
+      page_range: z.string().describe("Page range to apply master to (e.g., '1-5', '3,7,9', or 'all')"),
+      override_existing: z.boolean().default(false).describe("Override existing master page assignments")
+    },
+    async (args) => handleApplyMasterToPages(args)
+  );
+
+  // Register modify_master_page_elements tool
+  server.tool(
+    "modify_master_page_elements",
+    {
+      master_name: z.string().describe("Name of the master page to modify"),
+      operation: z.enum(["add_text", "add_image_placeholder", "add_rectangle", "modify_element", "remove_element"]).describe("Type of modification to perform"),
+      element_data: z.object({
+        type: z.enum(["text", "image", "rectangle"]).optional(),
+        x: z.number().optional().describe("X position in points"),
+        y: z.number().optional().describe("Y position in points"),
+        width: z.number().optional().describe("Width in points"),
+        height: z.number().optional().describe("Height in points"),
+        content: z.string().optional().describe("Text content for text elements"),
+        element_index: z.number().optional().describe("Index of element to modify/remove (0-based)"),
+        style_name: z.string().optional().describe("Style name to apply")
+      }).describe("Data for the element to add, modify, or remove")
+    },
+    async (args) => handleModifyMasterPageElements(args)
+  );
+
+  // Register apply_operation_to_all_pages tool
+  server.tool(
+    "apply_operation_to_all_pages",
+    {
+      operation: z.enum(["apply_style", "resize_objects", "reposition_objects", "change_layer", "apply_object_style"]).describe("Type of operation to apply"),
+      target_criteria: z.object({
+        object_type: z.enum(["all", "text_frames", "rectangles", "images", "groups"]).optional().describe("Type of objects to target"),
+        layer_name: z.string().optional().describe("Target specific layer"),
+        style_name: z.string().optional().describe("Target objects with specific style"),
+        has_content: z.boolean().optional().describe("Target objects with/without content")
+      }).describe("Criteria for selecting target objects"),
+      operation_data: z.object({
+        style_to_apply: z.string().optional().describe("Style name to apply"),
+        object_style_to_apply: z.string().optional().describe("Object style name to apply"),
+        resize_factor: z.number().optional().describe("Scale factor for resizing (1.0 = no change)"),
+        position_offset: z.object({
+          x: z.number(),
+          y: z.number()
+        }).optional().describe("Offset to apply to object positions"),
+        target_layer: z.string().optional().describe("Layer name to move objects to")
+      }).describe("Data for the operation to perform"),
+      page_range: z.string().default("all").describe("Page range to process (e.g., 'all', '1-5', '3,7,9')")
+    },
+    async (args) => handleApplyOperationToAllPages(args)
+  );
+
+  // Register select_objects_by_criteria tool
+  server.tool(
+    "select_objects_by_criteria",
+    {
+      criteria: z.object({
+        object_type: z.enum(["all", "text_frames", "rectangles", "images", "groups", "lines"]).optional().describe("Type of objects to select"),
+        layer_name: z.string().optional().describe("Select from specific layer"),
+        has_content: z.boolean().optional().describe("Select objects with/without content"),
+        style_name: z.string().optional().describe("Select objects with specific style"),
+        object_style_name: z.string().optional().describe("Select objects with specific object style"),
+        size_range: z.object({
+          min_width: z.number().optional(),
+          max_width: z.number().optional(),
+          min_height: z.number().optional(),
+          max_height: z.number().optional()
+        }).optional().describe("Size constraints for selection"),
+        position_range: z.object({
+          min_x: z.number().optional(),
+          max_x: z.number().optional(),
+          min_y: z.number().optional(),
+          max_y: z.number().optional()
+        }).optional().describe("Position constraints for selection")
+      }).describe("Criteria for object selection"),
+      page_range: z.string().default("all").describe("Page range to search (e.g., 'all', '1-5', '3,7,9')"),
+      select_objects: z.boolean().default(true).describe("Actually select the objects in InDesign (false = just report)")
+    },
+    async (args) => handleSelectObjectsByCriteria(args)
+  );
+
+  // Register batch_apply_styles tool
+  server.tool(
+    "batch_apply_styles",
+    {
+      style_mappings: z.array(z.object({
+        target_criteria: z.object({
+          object_type: z.enum(["text_frames", "paragraphs", "characters", "objects"]).describe("Type of objects to target"),
+          current_style: z.string().optional().describe("Current style name to replace"),
+          layer_name: z.string().optional().describe("Target specific layer"),
+          content_match: z.string().optional().describe("Text content pattern to match")
+        }),
+        new_style: z.string().describe("New style name to apply"),
+        style_type: z.enum(["paragraph", "character", "object"]).describe("Type of style being applied")
+      })).describe("Array of style mapping rules"),
+      page_range: z.string().default("all").describe("Page range to process"),
+      preview_mode: z.boolean().default(false).describe("Preview changes without applying them")
+    },
+    async (args) => handleBatchApplyStyles(args)
+  );
 }
 
 async function handleResolveOversetText(args: any): Promise<{ content: TextContent[] }> {
@@ -1070,17 +1248,19 @@ async function handleInspectFrameBounds(args: any): Promise<{ content: TextConte
   };
 }
 
-async function handleCopyTextFrameProperties(args: any): Promise<{ content: TextContent[] }> {
+async function handleCopyTextFrameProperties(args: any) {
   const sourcePage = args.source_page || 4;
   const targetPages = JSON.stringify(args.target_pages || [6, 7]);
-  const sourceFrameIndex = args.source_frame_index || 0;
+  const sourceFrameIndex = args.source_frame_index;
   const replaceExisting = args.replace_existing || false;
+  const copyAllFrames = sourceFrameIndex === undefined || sourceFrameIndex === -1;
   
   const script = `
     var doc = app.activeDocument;
     var results = [];
+    var totalCreated = 0;
     
-    // Get source frame
+    // Get source page
     if (doc.pages.length < ${sourcePage}) {
       throw new Error("Source page " + ${sourcePage} + " does not exist.");
     }
@@ -1089,16 +1269,40 @@ async function handleCopyTextFrameProperties(args: any): Promise<{ content: Text
     if (sourcePage.textFrames.length === 0) {
       throw new Error("No text frames found on page " + ${sourcePage} + " to copy properties from. Check other pages using get_textframe_info to find available frames.");
     }
+    
+    var sourceFrames = [];
+    
+    ${copyAllFrames ? `
+    // Copy ALL frames from source page
+    for (var f = 0; f < sourcePage.textFrames.length; f++) {
+      sourceFrames.push({
+        frame: sourcePage.textFrames[f],
+        bounds: sourcePage.textFrames[f].geometricBounds,
+        index: f
+      });
+    }
+    results.push("Will copy ALL " + sourceFrames.length + " frames from source page");
+    ` : `
+    // Copy specific frame by index
     if (sourcePage.textFrames.length <= ${sourceFrameIndex}) {
       throw new Error("Source frame index " + ${sourceFrameIndex} + " does not exist on page " + ${sourcePage} + ". Page has " + sourcePage.textFrames.length + " frame(s). Use index 0 to " + (sourcePage.textFrames.length - 1) + ".");
     }
     
-    var sourceFrame = sourcePage.textFrames[${sourceFrameIndex}];
-    var sourceBounds = sourceFrame.geometricBounds;
+    sourceFrames.push({
+      frame: sourcePage.textFrames[${sourceFrameIndex}],
+      bounds: sourcePage.textFrames[${sourceFrameIndex}].geometricBounds,
+      index: ${sourceFrameIndex}
+    });
+    results.push("Will copy frame " + ${sourceFrameIndex} + " from source page");
+    `}
     
-    results.push("Source frame bounds: [" + sourceBounds.join(", ") + "]");
-    results.push("Position: x=" + sourceBounds[1] + ", y=" + sourceBounds[0]);
-    results.push("Size: " + (sourceBounds[3] - sourceBounds[1]) + " × " + (sourceBounds[2] - sourceBounds[0]));
+    // Display source frame information
+    for (var s = 0; s < sourceFrames.length; s++) {
+      var srcInfo = sourceFrames[s];
+      results.push("Frame " + srcInfo.index + " bounds: [" + srcInfo.bounds.join(", ") + "]");
+      results.push("  Position: x=" + srcInfo.bounds[1] + ", y=" + srcInfo.bounds[0]);
+      results.push("  Size: " + (srcInfo.bounds[3] - srcInfo.bounds[1]) + " × " + (srcInfo.bounds[2] - srcInfo.bounds[0]));
+    }
     results.push("");
     
     // Create matching frames on target pages
@@ -1112,36 +1316,1489 @@ async function handleCopyTextFrameProperties(args: any): Promise<{ content: Text
       }
       
       var targetPage = doc.pages[targetPageNum - 1];
+      var frameCountBefore = targetPage.textFrames.length;
       
       // Remove existing frames if requested
       if (${replaceExisting}) {
         while (targetPage.textFrames.length > 0) {
           targetPage.textFrames[0].remove();
         }
-        results.push("Cleared existing frames on page " + targetPageNum);
+        results.push("Cleared " + frameCountBefore + " existing frames on page " + targetPageNum);
       }
       
-      // Create new frame with exact same bounds
-      var newFrame = targetPage.textFrames.add();
-      newFrame.geometricBounds = [
-        sourceBounds[0],  // y1
-        sourceBounds[1],  // x1  
-        sourceBounds[2],  // y2
-        sourceBounds[3]   // x2
-      ];
+      // Create matching frames for each source frame
+      var createdOnThisPage = 0;
+      for (var j = 0; j < sourceFrames.length; j++) {
+        var sourceFrameInfo = sourceFrames[j];
+        
+        try {
+          // Create new frame with exact same bounds
+          var newFrame = targetPage.textFrames.add();
+          newFrame.geometricBounds = [
+            sourceFrameInfo.bounds[0],  // y1
+            sourceFrameInfo.bounds[1],  // x1  
+            sourceFrameInfo.bounds[2],  // y2
+            sourceFrameInfo.bounds[3]   // x2
+          ];
+          
+          // Try to copy additional properties if possible
+          try {
+            var sourceFrame = sourceFrameInfo.frame;
+            if (sourceFrame.contents && sourceFrame.contents.length > 0) {
+              // Copy text content as placeholder
+              newFrame.contents = sourceFrame.contents;
+            }
+            
+            // Copy text frame preferences
+            if (sourceFrame.textFramePreferences) {
+              newFrame.textFramePreferences.verticalJustification = sourceFrame.textFramePreferences.verticalJustification;
+              newFrame.textFramePreferences.firstBaselineOffset = sourceFrame.textFramePreferences.firstBaselineOffset;
+              newFrame.textFramePreferences.autoSizingReferencePoint = sourceFrame.textFramePreferences.autoSizingReferencePoint;
+            }
+          } catch (propErr) {
+            // Properties copying failed, continue with basic frame
+            results.push("  Note: Could not copy all properties for frame " + sourceFrameInfo.index + ": " + propErr.message);
+          }
+          
+          createdOnThisPage++;
+          totalCreated++;
+          
+        } catch (createErr) {
+          results.push("  Error creating frame " + sourceFrameInfo.index + " on page " + targetPageNum + ": " + createErr.message);
+        }
+      }
       
-      results.push("Created matching frame on page " + targetPageNum);
+      results.push("Created " + createdOnThisPage + " matching frames on page " + targetPageNum);
     }
     
-    results.join("\\n");
+    results.push("");
+    results.push("Summary: Created " + totalCreated + " frames across " + targetPageArray.length + " target pages");
+    
+    results.join("\\\\n");
   `;
   
   const result = await executeExtendScript(script);
   
   return {
     content: [{
-      type: "text",
-      text: result.success ? `Successfully copied frame properties:\n${result.result}` : `Error copying frame properties: ${result.error}`
+      type: "text" as const,
+      text: result.success ? `Successfully copied frame properties:\\n${result.result}` : `Error copying frame properties: ${result.error}`
+    }]
+  };
+}
+
+async function handleUpdateAllLinks(args: any): Promise<{ content: TextContent[] }> {
+  const { relink_missing = true, report_only = false } = args;
+  
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    var results = [];
+    var updated = 0;
+    var missing = 0;
+    var errors = 0;
+    
+    results.push("Link Status Report");
+    results.push("=================");
+    
+    try {
+      var links = doc.links;
+      results.push("Total links found: " + links.length);
+      results.push("");
+      
+      for (var i = 0; i < links.length; i++) {
+        try {
+          var link = links[i];
+          var linkName = link.name || ("Link_" + (i + 1));
+          var status = "Unknown";
+          
+          // Check link status
+          try {
+            status = link.status.toString();
+          } catch (e) {
+            status = "Cannot determine";
+          }
+          
+          if (status.indexOf("LINK_MISSING") >= 0 || status.indexOf("Missing") >= 0) {
+            results.push("❌ " + linkName + " - MISSING");
+            missing++;
+            
+            if (${relink_missing ? "true" : "false"} && !${report_only ? "true" : "false"}) {
+              // Attempt to relink by searching in same directory or common locations
+              try {
+                link.update();
+                results.push("   ✓ Successfully relinked");
+                updated++;
+              } catch (relinkError) {
+                results.push("   ✗ Relink failed: " + relinkError.message);
+                errors++;
+              }
+            }
+          } else if (status.indexOf("LINK_OUT_OF_DATE") >= 0 || status.indexOf("Modified") >= 0) {
+            results.push("🔄 " + linkName + " - OUT OF DATE");
+            
+            if (!${report_only ? "true" : "false"}) {
+              try {
+                link.update();
+                results.push("   ✓ Updated to latest version");
+                updated++;
+              } catch (updateError) {
+                results.push("   ✗ Update failed: " + updateError.message);
+                errors++;
+              }
+            }
+          } else {
+            results.push("✅ " + linkName + " - OK");
+          }
+        } catch (linkError) {
+          results.push("❌ Error processing link " + (i + 1) + ": " + linkError.message);
+          errors++;
+        }
+      }
+      
+      results.push("");
+      results.push("Summary:");
+      results.push("  Links processed: " + links.length);
+      if (!${report_only ? "true" : "false"}) {
+        results.push("  Successfully updated: " + updated);
+      }
+      results.push("  Missing links: " + missing);
+      if (errors > 0) {
+        results.push("  Errors encountered: " + errors);
+      }
+      
+    } catch (mainError) {
+      throw new Error("Link update failed: " + mainError.message);
+    }
+    
+    results.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error updating links: ${result.error}`
+    }]
+  };
+}
+
+async function handleRelinkAssets(args: any): Promise<{ content: TextContent[] }> {
+  const { link_mappings, search_directories = [], update_all_instances = true } = args;
+  
+  if (!link_mappings || Object.keys(link_mappings).length === 0) {
+    return {
+      content: [{
+        type: "text" as const,
+        text: "Error: link_mappings parameter is required and cannot be empty"
+      }]
+    };
+  }
+  
+  const mappingsJson = JSON.stringify(link_mappings);
+  const searchDirsJson = JSON.stringify(search_directories);
+  
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    var mappings = ${mappingsJson};
+    var searchDirs = ${searchDirsJson};
+    var results = [];
+    var relinked = 0;
+    var notFound = 0;
+    var errors = 0;
+    
+    results.push("Asset Relinking Report");
+    results.push("====================");
+    results.push("Mappings to process: " + Object.keys(mappings).length);
+    results.push("");
+    
+    try {
+      var links = doc.links;
+      
+      for (var oldPath in mappings) {
+        var newPath = mappings[oldPath];
+        var foundLinks = [];
+        
+        results.push("Processing: " + oldPath + " → " + newPath);
+        
+        // Find links that match the old path
+        for (var i = 0; i < links.length; i++) {
+          try {
+            var link = links[i];
+            var linkPath = "";
+            
+            try {
+              linkPath = link.filePath || "";
+            } catch (e) {
+              linkPath = link.name || "";
+            }
+            
+            // Check if this link matches the old path pattern
+            if (linkPath.indexOf(oldPath) >= 0 || linkPath === oldPath) {
+              foundLinks.push(link);
+            }
+          } catch (e) {
+            // Skip problematic links
+          }
+        }
+        
+        results.push("  Found " + foundLinks.length + " matching links");
+        
+        // Relink each found link
+        for (var j = 0; j < foundLinks.length; j++) {
+          try {
+            var linkToRelink = foundLinks[j];
+            var newFile = new File(newPath);
+            
+            if (newFile.exists) {
+              linkToRelink.relink(newFile);
+              results.push("  ✓ Relinked: " + linkToRelink.name);
+              relinked++;
+              
+              if (!${update_all_instances ? "true" : "false"}) {
+                break; // Only relink first instance if update_all_instances is false
+              }
+            } else {
+              results.push("  ✗ New file not found: " + newPath);
+              notFound++;
+            }
+          } catch (relinkError) {
+            results.push("  ✗ Relink error: " + relinkError.message);
+            errors++;
+          }
+        }
+        
+        if (foundLinks.length === 0) {
+          results.push("  ⚠ No matching links found for: " + oldPath);
+        }
+        
+        results.push("");
+      }
+      
+      results.push("Summary:");
+      results.push("  Successfully relinked: " + relinked);
+      results.push("  Files not found: " + notFound);
+      if (errors > 0) {
+        results.push("  Errors encountered: " + errors);
+      }
+      
+    } catch (mainError) {
+      throw new Error("Asset relinking failed: " + mainError.message);
+    }
+    
+    results.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error relinking assets: ${result.error}`
+    }]
+  };
+}
+
+async function handleCopyObjectAcrossPages(args: any): Promise<{ content: TextContent[] }> {
+  const { source_page, target_pages, selection_criteria, positioning } = args;
+  
+  if (!source_page || !target_pages || target_pages.length === 0) {
+    return {
+      content: [{
+        type: "text" as const,
+        text: "Error: source_page and target_pages are required"
+      }]
+    };
+  }
+  
+  const targetPagesJson = JSON.stringify(target_pages);
+  const criteriaJson = JSON.stringify(selection_criteria || { object_type: "selected" });
+  const positioningJson = JSON.stringify(positioning || { maintain_position: true });
+  
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    var sourcePageNum = ${source_page};
+    var targetPages = ${targetPagesJson};
+    var criteria = ${criteriaJson};
+    var positioning = ${positioningJson};
+    var results = [];
+    var totalCopied = 0;
+    
+    results.push("Copying Objects Across Pages");
+    results.push("===========================");
+    results.push("Source page: " + sourcePageNum);
+    results.push("Target pages: " + targetPages.join(", "));
+    results.push("");
+    
+    try {
+      // Validate source page
+      if (sourcePageNum < 1 || sourcePageNum > doc.pages.length) {
+        throw new Error("Source page " + sourcePageNum + " out of range");
+      }
+      
+      var sourcePage = doc.pages[sourcePageNum - 1];
+      var objectsToCopy = [];
+      
+      // Select objects based on criteria
+      if (criteria.object_type === "selected") {
+        if (app.selection.length === 0) {
+          throw new Error("No objects selected. Please select objects or choose a different object_type.");
+        }
+        
+        for (var s = 0; s < app.selection.length; s++) {
+          objectsToCopy.push(app.selection[s]);
+        }
+        
+        results.push("Using " + objectsToCopy.length + " selected objects");
+        
+      } else if (criteria.object_type === "all") {
+        var allItems = sourcePage.allPageItems;
+        for (var i = 0; i < allItems.length; i++) {
+          objectsToCopy.push(allItems[i]);
+        }
+        
+        results.push("Found " + objectsToCopy.length + " objects on source page");
+        
+      } else if (criteria.object_type === "text_frames") {
+        var textFrames = sourcePage.textFrames;
+        for (var i = 0; i < textFrames.length; i++) {
+          objectsToCopy.push(textFrames[i]);
+        }
+        
+        results.push("Found " + objectsToCopy.length + " text frames");
+        
+      } else if (criteria.object_type === "images") {
+        var allItems = sourcePage.allPageItems;
+        for (var i = 0; i < allItems.length; i++) {
+          var item = allItems[i];
+          try {
+            if (item.hasOwnProperty('images') && item.images.length > 0) {
+              objectsToCopy.push(item);
+            }
+          } catch (e) {
+            // Skip items that don't support images property
+          }
+        }
+        
+        results.push("Found " + objectsToCopy.length + " image containers");
+        
+      } else if (criteria.object_type === "rectangles") {
+        var rectangles = sourcePage.rectangles;
+        for (var i = 0; i < rectangles.length; i++) {
+          objectsToCopy.push(rectangles[i]);
+        }
+        
+        results.push("Found " + objectsToCopy.length + " rectangles");
+      }
+      
+      // Apply layer filtering if specified
+      if (criteria.layer_name) {
+        var targetLayer = doc.layers.itemByName(criteria.layer_name);
+        if (!targetLayer.isValid) {
+          throw new Error("Layer '" + criteria.layer_name + "' not found");
+        }
+        
+        var filteredObjects = [];
+        for (var i = 0; i < objectsToCopy.length; i++) {
+          try {
+            if (objectsToCopy[i].itemLayer === targetLayer) {
+              filteredObjects.push(objectsToCopy[i]);
+            }
+          } catch (e) {
+            // Skip objects that don't have layer property
+          }
+        }
+        
+        objectsToCopy = filteredObjects;
+        results.push("After layer filtering: " + objectsToCopy.length + " objects");
+      }
+      
+      if (objectsToCopy.length === 0) {
+        throw new Error("No objects found matching the specified criteria");
+      }
+      
+      results.push("");
+      
+      // Copy objects to each target page
+      for (var p = 0; p < targetPages.length; p++) {
+        var targetPageNum = targetPages[p];
+        
+        if (targetPageNum < 1 || targetPageNum > doc.pages.length) {
+          results.push("❌ Target page " + targetPageNum + " out of range, skipping");
+          continue;
+        }
+        
+        var targetPage = doc.pages[targetPageNum - 1];
+        var copiedOnThisPage = 0;
+        
+        for (var i = 0; i < objectsToCopy.length; i++) {
+          try {
+            var sourceObject = objectsToCopy[i];
+            var duplicatedObject = sourceObject.duplicate(targetPage);
+            
+            // Apply positioning
+            if (!positioning.maintain_position && positioning.offset) {
+              var bounds = duplicatedObject.geometricBounds;
+              duplicatedObject.geometricBounds = [
+                bounds[0] + positioning.offset.y,
+                bounds[1] + positioning.offset.x,
+                bounds[2] + positioning.offset.y,
+                bounds[3] + positioning.offset.x
+              ];
+            }
+            
+            copiedOnThisPage++;
+            totalCopied++;
+          } catch (copyError) {
+            results.push("  ✗ Failed to copy object " + (i + 1) + " to page " + targetPageNum + ": " + copyError.message);
+          }
+        }
+        
+        results.push("✓ Page " + targetPageNum + ": " + copiedOnThisPage + " objects copied");
+      }
+      
+      results.push("");
+      results.push("Summary: " + totalCopied + " objects copied across " + targetPages.length + " target pages");
+      
+    } catch (mainError) {
+      throw new Error("Copy objects failed: " + mainError.message);
+    }
+    
+    results.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error copying objects: ${result.error}`
+    }]
+  };
+}
+
+async function handleCreateMasterPage(args: any): Promise<{ content: TextContent[] }> {
+  const masterName = args.master_name || "New Master";
+  const basedOn = args.based_on || "";
+  const pageSize = args.page_size ? JSON.stringify(args.page_size) : "null";
+  const margins = args.margins ? JSON.stringify(args.margins) : "null";
+  
+  const script = `
+    if (!app.documents.length) {
+      throw new Error("No document open");
+    }
+    
+    var doc = app.activeDocument;
+    var masterName = "${masterName}";
+    var basedOn = "${basedOn}";
+    var pageSize = ${pageSize};
+    var margins = ${margins};
+    var result = [];
+    
+    try {
+      // Check if master page name already exists
+      for (var i = 0; i < doc.masterSpreads.length; i++) {
+        if (doc.masterSpreads[i].namePrefix === masterName) {
+          throw new Error("Master page with name '" + masterName + "' already exists");
+        }
+      }
+      
+      var newMaster;
+      
+      if (basedOn !== "" && basedOn !== null) {
+        // Base on existing master
+        var baseMaster = null;
+        for (var j = 0; j < doc.masterSpreads.length; j++) {
+          if (doc.masterSpreads[j].namePrefix === basedOn) {
+            baseMaster = doc.masterSpreads[j];
+            break;
+          }
+        }
+        
+        if (baseMaster) {
+          newMaster = doc.masterSpreads.add(1, baseMaster);
+          result.push("✓ Created master page '" + masterName + "' based on '" + basedOn + "'");
+        } else {
+          throw new Error("Base master page '" + basedOn + "' not found");
+        }
+      } else {
+        // Create from scratch
+        newMaster = doc.masterSpreads.add();
+        result.push("✓ Created new master page '" + masterName + "' from scratch");
+      }
+      
+      // Set the name
+      newMaster.namePrefix = masterName;
+      
+      // Apply custom page size if specified
+      if (pageSize !== null) {
+        for (var k = 0; k < newMaster.pages.length; k++) {
+          var page = newMaster.pages[k];
+          page.resize(
+            CoordinateSpaces.INNER_COORDINATES,
+            AnchorPoint.TOP_LEFT_ANCHOR,
+            ResizeMethods.REPLACING_CURRENT_DIMENSIONS_WITH,
+            [pageSize.width, pageSize.height]
+          );
+        }
+        result.push("✓ Applied custom page size: " + pageSize.width + "x" + pageSize.height + " points");
+      }
+      
+      // Apply custom margins if specified
+      if (margins !== null) {
+        for (var m = 0; m < newMaster.pages.length; m++) {
+          var page = newMaster.pages[m];
+          page.marginPreferences.top = margins.top;
+          page.marginPreferences.left = margins.left;
+          page.marginPreferences.bottom = margins.bottom;
+          page.marginPreferences.right = margins.right;
+        }
+        result.push("✓ Applied custom margins: T:" + margins.top + " L:" + margins.left + " B:" + margins.bottom + " R:" + margins.right);
+      }
+      
+      result.push("Master page created successfully with " + newMaster.pages.length + " page(s)");
+      
+    } catch (e) {
+      throw new Error("Failed to create master page: " + e.message);
+    }
+    
+    result.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error creating master page: ${result.error}`
+    }]
+  };
+}
+
+async function handleApplyMasterToPages(args: any): Promise<{ content: TextContent[] }> {
+  const masterName = args.master_name || "";
+  const pageRange = args.page_range || "all";
+  const overrideExisting = args.override_existing || false;
+  
+  const script = `
+    if (!app.documents.length) {
+      throw new Error("No document open");
+    }
+    
+    var doc = app.activeDocument;
+    var masterName = "${masterName}";
+    var pageRange = "${pageRange}";
+    var overrideExisting = ${overrideExisting};
+    var result = [];
+    var applied = 0;
+    var skipped = 0;
+    
+    try {
+      // Find the master page
+      var targetMaster = null;
+      for (var i = 0; i < doc.masterSpreads.length; i++) {
+        if (doc.masterSpreads[i].namePrefix === masterName) {
+          targetMaster = doc.masterSpreads[i];
+          break;
+        }
+      }
+      
+      if (!targetMaster) {
+        throw new Error("Master page '" + masterName + "' not found");
+      }
+      
+      // Parse page range
+      var pagesToApply = [];
+      
+      if (pageRange === "all") {
+        for (var j = 0; j < doc.pages.length; j++) {
+          pagesToApply.push(j + 1);
+        }
+      } else {
+        // Parse ranges like "1-5,7,9-12"
+        var ranges = pageRange.split(",");
+        for (var r = 0; r < ranges.length; r++) {
+          var range = ranges[r].replace(/\s/g, "");
+          if (range.indexOf("-") !== -1) {
+            var parts = range.split("-");
+            var start = parseInt(parts[0]);
+            var end = parseInt(parts[1]);
+            for (var p = start; p <= end; p++) {
+              if (p > 0 && p <= doc.pages.length) {
+                pagesToApply.push(p);
+              }
+            }
+          } else {
+            var pageNum = parseInt(range);
+            if (pageNum > 0 && pageNum <= doc.pages.length) {
+              pagesToApply.push(pageNum);
+            }
+          }
+        }
+      }
+      
+      // Apply master to pages
+      for (var k = 0; k < pagesToApply.length; k++) {
+        var pageNum = pagesToApply[k];
+        var page = doc.pages[pageNum - 1];
+        
+        // Check if page already has a master applied
+        if (!overrideExisting && page.appliedMaster !== doc.masterSpreads[0]) {
+          result.push("⚠ Page " + pageNum + ": skipped (already has master '" + page.appliedMaster.namePrefix + "')");
+          skipped++;
+          continue;
+        }
+        
+        try {
+          page.appliedMaster = targetMaster;
+          result.push("✓ Page " + pageNum + ": applied master '" + masterName + "'");
+          applied++;
+        } catch (applyError) {
+          result.push("✗ Page " + pageNum + ": failed to apply master (" + applyError.message + ")");
+        }
+      }
+      
+      result.push("");
+      result.push("Summary: Applied master to " + applied + " pages, skipped " + skipped + " pages");
+      
+    } catch (e) {
+      throw new Error("Failed to apply master pages: " + e.message);
+    }
+    
+    result.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error applying master to pages: ${result.error}`
+    }]
+  };
+}
+
+async function handleModifyMasterPageElements(args: any): Promise<{ content: TextContent[] }> {
+  const masterName = args.master_name || "";
+  const operation = args.operation || "add_text";
+  const elementData = args.element_data ? JSON.stringify(args.element_data) : "{}";
+  
+  const script = `
+    if (!app.documents.length) {
+      throw new Error("No document open");
+    }
+    
+    var doc = app.activeDocument;
+    var masterName = "${masterName}";
+    var operation = "${operation}";
+    var elementData = ${elementData};
+    var result = [];
+    
+    try {
+      // Find the master page
+      var targetMaster = null;
+      for (var i = 0; i < doc.masterSpreads.length; i++) {
+        if (doc.masterSpreads[i].namePrefix === masterName) {
+          targetMaster = doc.masterSpreads[i];
+          break;
+        }
+      }
+      
+      if (!targetMaster) {
+        throw new Error("Master page '" + masterName + "' not found");
+      }
+      
+      // Get the first page of the master spread for element operations
+      var masterPage = targetMaster.pages[0];
+      
+      if (operation === "add_text") {
+        if (!elementData.x || !elementData.y || !elementData.width || !elementData.height) {
+          throw new Error("Text element requires x, y, width, and height properties");
+        }
+        
+        var textFrame = masterPage.textFrames.add();
+        textFrame.geometricBounds = [
+          elementData.y,
+          elementData.x,
+          elementData.y + elementData.height,
+          elementData.x + elementData.width
+        ];
+        
+        if (elementData.content) {
+          textFrame.contents = elementData.content;
+        }
+        
+        if (elementData.style_name) {
+          // Apply paragraph style if it exists
+          for (var s = 0; s < doc.paragraphStyles.length; s++) {
+            if (doc.paragraphStyles[s].name === elementData.style_name) {
+              textFrame.paragraphs[0].appliedParagraphStyle = doc.paragraphStyles[s];
+              break;
+            }
+          }
+        }
+        
+        result.push("✓ Added text frame at (" + elementData.x + "," + elementData.y + ") size " + elementData.width + "x" + elementData.height);
+        
+      } else if (operation === "add_image_placeholder") {
+        if (!elementData.x || !elementData.y || !elementData.width || !elementData.height) {
+          throw new Error("Image placeholder requires x, y, width, and height properties");
+        }
+        
+        var rectangle = masterPage.rectangles.add();
+        rectangle.geometricBounds = [
+          elementData.y,
+          elementData.x,
+          elementData.y + elementData.height,
+          elementData.x + elementData.width
+        ];
+        
+        // Make it an image placeholder by setting fill to None and adding a stroke
+        rectangle.fillColor = doc.swatches.itemByName("[None]");
+        rectangle.strokeColor = doc.swatches.itemByName("[Black]");
+        rectangle.strokeWeight = 1;
+        
+        result.push("✓ Added image placeholder at (" + elementData.x + "," + elementData.y + ") size " + elementData.width + "x" + elementData.height);
+        
+      } else if (operation === "add_rectangle") {
+        if (!elementData.x || !elementData.y || !elementData.width || !elementData.height) {
+          throw new Error("Rectangle requires x, y, width, and height properties");
+        }
+        
+        var rectangle = masterPage.rectangles.add();
+        rectangle.geometricBounds = [
+          elementData.y,
+          elementData.x,
+          elementData.y + elementData.height,
+          elementData.x + elementData.width
+        ];
+        
+        result.push("✓ Added rectangle at (" + elementData.x + "," + elementData.y + ") size " + elementData.width + "x" + elementData.height);
+        
+      } else if (operation === "remove_element") {
+        if (elementData.element_index === undefined) {
+          throw new Error("Remove operation requires element_index");
+        }
+        
+        var allItems = masterPage.allPageItems;
+        if (elementData.element_index >= allItems.length) {
+          throw new Error("Element index " + elementData.element_index + " out of range (0-" + (allItems.length - 1) + ")");
+        }
+        
+        var elementToRemove = allItems[elementData.element_index];
+        var elementType = "unknown";
+        
+        // Determine element type for better feedback
+        if (elementToRemove.hasOwnProperty('contents')) {
+          elementType = "text frame";
+        } else if (elementToRemove.constructor.name) {
+          elementType = elementToRemove.constructor.name.toLowerCase();
+        }
+        
+        elementToRemove.remove();
+        result.push("✓ Removed " + elementType + " at index " + elementData.element_index);
+        
+      } else {
+        throw new Error("Unsupported operation: " + operation);
+      }
+      
+      result.push("Master page '" + masterName + "' modified successfully");
+      
+    } catch (e) {
+      throw new Error("Failed to modify master page: " + e.message);
+    }
+    
+    result.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error modifying master page: ${result.error}`
+    }]
+  };
+}
+
+async function handleApplyOperationToAllPages(args: any): Promise<{ content: TextContent[] }> {
+  const operation = args.operation || "apply_style";
+  const targetCriteria = args.target_criteria ? JSON.stringify(args.target_criteria) : "{}";
+  const operationData = args.operation_data ? JSON.stringify(args.operation_data) : "{}";
+  const pageRange = args.page_range || "all";
+  
+  const script = `
+    if (!app.documents.length) {
+      throw new Error("No document open");
+    }
+    
+    var doc = app.activeDocument;
+    var operation = "${operation}";
+    var targetCriteria = ${targetCriteria};
+    var operationData = ${operationData};
+    var pageRange = "${pageRange}";
+    var result = [];
+    var totalProcessed = 0;
+    var totalPages = 0;
+    
+    try {
+      // Parse page range
+      var pagesToProcess = [];
+      if (pageRange === "all") {
+        for (var i = 0; i < doc.pages.length; i++) {
+          pagesToProcess.push(i);
+        }
+      } else {
+        var ranges = pageRange.split(",");
+        for (var r = 0; r < ranges.length; r++) {
+          var range = ranges[r].replace(/\s/g, "");
+          if (range.indexOf("-") !== -1) {
+            var parts = range.split("-");
+            var start = parseInt(parts[0]) - 1;
+            var end = parseInt(parts[1]) - 1;
+            for (var p = start; p <= end && p < doc.pages.length; p++) {
+              if (p >= 0) pagesToProcess.push(p);
+            }
+          } else {
+            var pageNum = parseInt(range) - 1;
+            if (pageNum >= 0 && pageNum < doc.pages.length) {
+              pagesToProcess.push(pageNum);
+            }
+          }
+        }
+      }
+      
+      // Process each page
+      for (var pageIdx = 0; pageIdx < pagesToProcess.length; pageIdx++) {
+        var page = doc.pages[pagesToProcess[pageIdx]];
+        var pageNum = pagesToProcess[pageIdx] + 1;
+        var pageProcessed = 0;
+        
+        // Get all items on the page
+        var allItems = page.allPageItems;
+        
+        for (var i = 0; i < allItems.length; i++) {
+          var item = allItems[i];
+          
+          try {
+            // Check if item matches criteria
+            if (!matchesCriteria(item, targetCriteria)) {
+              continue;
+            }
+            
+            // Apply the operation
+            var operationResult = applyOperation(item, operation, operationData, doc);
+            if (operationResult.success) {
+              pageProcessed++;
+              totalProcessed++;
+            }
+            
+          } catch (itemError) {
+            // Skip items that can't be processed
+          }
+        }
+        
+        if (pageProcessed > 0) {
+          result.push("✓ Page " + pageNum + ": " + pageProcessed + " objects processed");
+          totalPages++;
+        }
+      }
+      
+      result.push("");
+      result.push("Summary: Processed " + totalProcessed + " objects across " + totalPages + " pages");
+      
+    } catch (e) {
+      throw new Error("Bulk operation failed: " + e.message);
+    }
+    
+    // Helper function to check if item matches criteria
+    function matchesCriteria(item, criteria) {
+      try {
+        // Object type filtering
+        if (criteria.object_type && criteria.object_type !== "all") {
+          var itemType = getItemType(item);
+          if (criteria.object_type === "text_frames" && itemType !== "TextFrame") return false;
+          if (criteria.object_type === "rectangles" && itemType !== "Rectangle") return false;
+          if (criteria.object_type === "images" && itemType !== "ImageFrame") return false;
+          if (criteria.object_type === "groups" && itemType !== "Group") return false;
+        }
+        
+        // Layer filtering
+        if (criteria.layer_name && criteria.layer_name !== "") {
+          if (!item.itemLayer || item.itemLayer.name !== criteria.layer_name) {
+            return false;
+          }
+        }
+        
+        // Content filtering
+        if (criteria.has_content !== undefined) {
+          var hasContent = false;
+          if (item.hasOwnProperty('contents')) {
+            hasContent = item.contents !== "";
+          }
+          if (criteria.has_content !== hasContent) {
+            return false;
+          }
+        }
+        
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    
+    // Helper function to apply operation
+    function applyOperation(item, operation, data, doc) {
+      try {
+        if (operation === "apply_style" && data.style_to_apply) {
+          if (item.hasOwnProperty('contents') && item.paragraphs.length > 0) {
+            for (var s = 0; s < doc.paragraphStyles.length; s++) {
+              if (doc.paragraphStyles[s].name === data.style_to_apply) {
+                item.paragraphs[0].appliedParagraphStyle = doc.paragraphStyles[s];
+                return { success: true };
+              }
+            }
+          }
+        } else if (operation === "apply_object_style" && data.object_style_to_apply) {
+          for (var os = 0; os < doc.objectStyles.length; os++) {
+            if (doc.objectStyles[os].name === data.object_style_to_apply) {
+              if (item.hasOwnProperty('appliedObjectStyle')) {
+                item.appliedObjectStyle = doc.objectStyles[os];
+                return { success: true };
+              }
+            }
+          }
+        } else if (operation === "resize_objects" && data.resize_factor) {
+          var bounds = item.geometricBounds;
+          var centerX = (bounds[1] + bounds[3]) / 2;
+          var centerY = (bounds[0] + bounds[2]) / 2;
+          var newWidth = (bounds[3] - bounds[1]) * data.resize_factor;
+          var newHeight = (bounds[2] - bounds[0]) * data.resize_factor;
+          
+          item.geometricBounds = [
+            centerY - newHeight / 2,
+            centerX - newWidth / 2,
+            centerY + newHeight / 2,
+            centerX + newWidth / 2
+          ];
+          return { success: true };
+        } else if (operation === "reposition_objects" && data.position_offset) {
+          var bounds = item.geometricBounds;
+          item.geometricBounds = [
+            bounds[0] + data.position_offset.y,
+            bounds[1] + data.position_offset.x,
+            bounds[2] + data.position_offset.y,
+            bounds[3] + data.position_offset.x
+          ];
+          return { success: true };
+        } else if (operation === "change_layer" && data.target_layer) {
+          for (var l = 0; l < doc.layers.length; l++) {
+            if (doc.layers[l].name === data.target_layer) {
+              item.itemLayer = doc.layers[l];
+              return { success: true };
+            }
+          }
+        }
+        
+        return { success: false };
+      } catch (e) {
+        return { success: false, error: e.message };
+      }
+    }
+    
+    // Helper function to determine item type
+    function getItemType(item) {
+      try {
+        if (item.hasOwnProperty('contents')) return "TextFrame";
+        if (item.hasOwnProperty('images') && item.images.length > 0) return "ImageFrame";
+        if (item.hasOwnProperty('groupItems')) return "Group";
+        if (item.constructor.name) return item.constructor.name;
+        return "Unknown";
+      } catch (e) {
+        return "Unknown";
+      }
+    }
+    
+    result.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error applying bulk operation: ${result.error}`
+    }]
+  };
+}
+
+async function handleSelectObjectsByCriteria(args: any): Promise<{ content: TextContent[] }> {
+  const criteria = args.criteria ? JSON.stringify(args.criteria) : "{}";
+  const pageRange = args.page_range || "all";
+  const selectObjects = args.select_objects !== false;
+  
+  const script = `
+    if (!app.documents.length) {
+      throw new Error("No document open");
+    }
+    
+    var doc = app.activeDocument;
+    var criteria = ${criteria};
+    var pageRange = "${pageRange}";
+    var selectObjects = ${selectObjects};
+    var result = [];
+    var matchingObjects = [];
+    var totalMatches = 0;
+    
+    try {
+      // Parse page range
+      var pagesToProcess = [];
+      if (pageRange === "all") {
+        for (var i = 0; i < doc.pages.length; i++) {
+          pagesToProcess.push(i);
+        }
+      } else {
+        var ranges = pageRange.split(",");
+        for (var r = 0; r < ranges.length; r++) {
+          var range = ranges[r].replace(/\s/g, "");
+          if (range.indexOf("-") !== -1) {
+            var parts = range.split("-");
+            var start = parseInt(parts[0]) - 1;
+            var end = parseInt(parts[1]) - 1;
+            for (var p = start; p <= end && p < doc.pages.length; p++) {
+              if (p >= 0) pagesToProcess.push(p);
+            }
+          } else {
+            var pageNum = parseInt(range) - 1;
+            if (pageNum >= 0 && pageNum < doc.pages.length) {
+              pagesToProcess.push(pageNum);
+            }
+          }
+        }
+      }
+      
+      // Search through pages
+      for (var pageIdx = 0; pageIdx < pagesToProcess.length; pageIdx++) {
+        var page = doc.pages[pagesToProcess[pageIdx]];
+        var pageNum = pagesToProcess[pageIdx] + 1;
+        var pageMatches = 0;
+        
+        var allItems = page.allPageItems;
+        
+        for (var i = 0; i < allItems.length; i++) {
+          var item = allItems[i];
+          
+          try {
+            if (matchesCriteria(item, criteria)) {
+              matchingObjects.push(item);
+              pageMatches++;
+              totalMatches++;
+            }
+          } catch (itemError) {
+            // Skip items that can't be evaluated
+          }
+        }
+        
+        if (pageMatches > 0) {
+          result.push("✓ Page " + pageNum + ": " + pageMatches + " objects match criteria");
+        }
+      }
+      
+      // Select the objects if requested
+      if (selectObjects && matchingObjects.length > 0) {
+        app.selection = matchingObjects;
+        result.push("");
+        result.push("✓ Selected " + matchingObjects.length + " matching objects in InDesign");
+      }
+      
+      result.push("");
+      result.push("Summary: Found " + totalMatches + " objects matching criteria");
+      
+    } catch (e) {
+      throw new Error("Object selection failed: " + e.message);
+    }
+    
+    // Helper function to check if item matches criteria
+    function matchesCriteria(item, criteria) {
+      try {
+        // Object type filtering
+        if (criteria.object_type && criteria.object_type !== "all") {
+          var itemType = getItemType(item);
+          if (criteria.object_type === "text_frames" && itemType !== "TextFrame") return false;
+          if (criteria.object_type === "rectangles" && itemType !== "Rectangle") return false;
+          if (criteria.object_type === "images" && itemType !== "ImageFrame") return false;
+          if (criteria.object_type === "groups" && itemType !== "Group") return false;
+          if (criteria.object_type === "lines" && itemType !== "GraphicLine") return false;
+        }
+        
+        // Layer filtering
+        if (criteria.layer_name && criteria.layer_name !== "") {
+          if (!item.itemLayer || item.itemLayer.name !== criteria.layer_name) {
+            return false;
+          }
+        }
+        
+        // Content filtering
+        if (criteria.has_content !== undefined) {
+          var hasContent = false;
+          if (item.hasOwnProperty('contents')) {
+            hasContent = item.contents !== "";
+          }
+          if (criteria.has_content !== hasContent) {
+            return false;
+          }
+        }
+        
+        // Size filtering
+        if (criteria.size_range) {
+          var bounds = item.geometricBounds;
+          var width = bounds[3] - bounds[1];
+          var height = bounds[2] - bounds[0];
+          
+          if (criteria.size_range.min_width && width < criteria.size_range.min_width) return false;
+          if (criteria.size_range.max_width && width > criteria.size_range.max_width) return false;
+          if (criteria.size_range.min_height && height < criteria.size_range.min_height) return false;
+          if (criteria.size_range.max_height && height > criteria.size_range.max_height) return false;
+        }
+        
+        // Position filtering
+        if (criteria.position_range) {
+          var bounds = item.geometricBounds;
+          var x = bounds[1];
+          var y = bounds[0];
+          
+          if (criteria.position_range.min_x && x < criteria.position_range.min_x) return false;
+          if (criteria.position_range.max_x && x > criteria.position_range.max_x) return false;
+          if (criteria.position_range.min_y && y < criteria.position_range.min_y) return false;
+          if (criteria.position_range.max_y && y > criteria.position_range.max_y) return false;
+        }
+        
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    
+    // Helper function to determine item type
+    function getItemType(item) {
+      try {
+        if (item.hasOwnProperty('contents')) return "TextFrame";
+        if (item.hasOwnProperty('images') && item.images.length > 0) return "ImageFrame";
+        if (item.hasOwnProperty('groupItems')) return "Group";
+        if (item.constructor.name) return item.constructor.name;
+        return "Unknown";
+      } catch (e) {
+        return "Unknown";
+      }
+    }
+    
+    result.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error selecting objects by criteria: ${result.error}`
+    }]
+  };
+}
+
+async function handleBatchApplyStyles(args: any): Promise<{ content: TextContent[] }> {
+  const styleMappings = args.style_mappings ? JSON.stringify(args.style_mappings) : "[]";
+  const pageRange = args.page_range || "all";
+  const previewMode = args.preview_mode || false;
+  
+  const script = `
+    if (!app.documents.length) {
+      throw new Error("No document open");
+    }
+    
+    var doc = app.activeDocument;
+    var styleMappings = ${styleMappings};
+    var pageRange = "${pageRange}";
+    var previewMode = ${previewMode};
+    var result = [];
+    var totalChanges = 0;
+    var totalPages = 0;
+    
+    try {
+      // Parse page range
+      var pagesToProcess = [];
+      if (pageRange === "all") {
+        for (var i = 0; i < doc.pages.length; i++) {
+          pagesToProcess.push(i);
+        }
+      } else {
+        var ranges = pageRange.split(",");
+        for (var r = 0; r < ranges.length; r++) {
+          var range = ranges[r].replace(/\s/g, "");
+          if (range.indexOf("-") !== -1) {
+            var parts = range.split("-");
+            var start = parseInt(parts[0]) - 1;
+            var end = parseInt(parts[1]) - 1;
+            for (var p = start; p <= end && p < doc.pages.length; p++) {
+              if (p >= 0) pagesToProcess.push(p);
+            }
+          } else {
+            var pageNum = parseInt(range) - 1;
+            if (pageNum >= 0 && pageNum < doc.pages.length) {
+              pagesToProcess.push(pageNum);
+            }
+          }
+        }
+      }
+      
+      if (previewMode) {
+        result.push("PREVIEW MODE - No changes will be applied");
+        result.push("");
+      }
+      
+      // Process each style mapping
+      for (var m = 0; m < styleMappings.length; m++) {
+        var mapping = styleMappings[m];
+        var mappingChanges = 0;
+        
+        result.push("Processing mapping " + (m + 1) + ": Apply '" + mapping.new_style + "' (" + mapping.style_type + ")");
+        
+        // Process each page
+        for (var pageIdx = 0; pageIdx < pagesToProcess.length; pageIdx++) {
+          var page = doc.pages[pagesToProcess[pageIdx]];
+          var pageChanges = 0;
+          
+          // Apply mapping based on target criteria
+          if (mapping.target_criteria.object_type === "text_frames") {
+            pageChanges += applyToTextFrames(page, mapping, doc, previewMode);
+          } else if (mapping.target_criteria.object_type === "paragraphs") {
+            pageChanges += applyToParagraphs(page, mapping, doc, previewMode);
+          } else if (mapping.target_criteria.object_type === "characters") {
+            pageChanges += applyToCharacters(page, mapping, doc, previewMode);
+          } else if (mapping.target_criteria.object_type === "objects") {
+            pageChanges += applyToObjects(page, mapping, doc, previewMode);
+          }
+          
+          mappingChanges += pageChanges;
+        }
+        
+        result.push("  → " + mappingChanges + " items affected");
+        totalChanges += mappingChanges;
+      }
+      
+      result.push("");
+      if (previewMode) {
+        result.push("Preview Summary: " + totalChanges + " items would be changed");
+      } else {
+        result.push("Summary: " + totalChanges + " style changes applied");
+      }
+      
+    } catch (e) {
+      throw new Error("Batch style application failed: " + e.message);
+    }
+    
+    // Helper functions for different object types
+    function applyToTextFrames(page, mapping, doc, preview) {
+      var changes = 0;
+      for (var i = 0; i < page.textFrames.length; i++) {
+        var frame = page.textFrames[i];
+        
+        if (matchesTextFrameCriteria(frame, mapping.target_criteria)) {
+          if (!preview && mapping.style_type === "paragraph") {
+            var style = findParagraphStyle(doc, mapping.new_style);
+            if (style && frame.paragraphs.length > 0) {
+              frame.paragraphs[0].appliedParagraphStyle = style;
+              changes++;
+            }
+          } else if (!preview && mapping.style_type === "object") {
+            var objStyle = findObjectStyle(doc, mapping.new_style);
+            if (objStyle && frame.hasOwnProperty('appliedObjectStyle')) {
+              frame.appliedObjectStyle = objStyle;
+              changes++;
+            }
+          } else if (preview) {
+            changes++;
+          }
+        }
+      }
+      return changes;
+    }
+    
+    function applyToParagraphs(page, mapping, doc, preview) {
+      var changes = 0;
+      for (var i = 0; i < page.textFrames.length; i++) {
+        var frame = page.textFrames[i];
+        for (var p = 0; p < frame.paragraphs.length; p++) {
+          var paragraph = frame.paragraphs[p];
+          
+          if (matchesParagraphCriteria(paragraph, mapping.target_criteria)) {
+            if (!preview && mapping.style_type === "paragraph") {
+              var style = findParagraphStyle(doc, mapping.new_style);
+              if (style) {
+                paragraph.appliedParagraphStyle = style;
+                changes++;
+              }
+            } else if (preview) {
+              changes++;
+            }
+          }
+        }
+      }
+      return changes;
+    }
+    
+    function applyToCharacters(page, mapping, doc, preview) {
+      var changes = 0;
+      for (var i = 0; i < page.textFrames.length; i++) {
+        var frame = page.textFrames[i];
+        for (var c = 0; c < frame.characters.length; c++) {
+          var character = frame.characters[c];
+          
+          if (matchesCharacterCriteria(character, mapping.target_criteria)) {
+            if (!preview && mapping.style_type === "character") {
+              var style = findCharacterStyle(doc, mapping.new_style);
+              if (style) {
+                character.appliedCharacterStyle = style;
+                changes++;
+              }
+            } else if (preview) {
+              changes++;
+            }
+          }
+        }
+      }
+      return changes;
+    }
+    
+    function applyToObjects(page, mapping, doc, preview) {
+      var changes = 0;
+      var allItems = page.allPageItems;
+      
+      for (var i = 0; i < allItems.length; i++) {
+        var item = allItems[i];
+        
+        if (matchesObjectCriteria(item, mapping.target_criteria)) {
+          if (!preview && mapping.style_type === "object") {
+            var style = findObjectStyle(doc, mapping.new_style);
+            if (style && item.hasOwnProperty('appliedObjectStyle')) {
+              item.appliedObjectStyle = style;
+              changes++;
+            }
+          } else if (preview) {
+            changes++;
+          }
+        }
+      }
+      return changes;
+    }
+    
+    // Helper functions to find styles
+    function findParagraphStyle(doc, styleName) {
+      for (var i = 0; i < doc.paragraphStyles.length; i++) {
+        if (doc.paragraphStyles[i].name === styleName) {
+          return doc.paragraphStyles[i];
+        }
+      }
+      return null;
+    }
+    
+    function findCharacterStyle(doc, styleName) {
+      for (var i = 0; i < doc.characterStyles.length; i++) {
+        if (doc.characterStyles[i].name === styleName) {
+          return doc.characterStyles[i];
+        }
+      }
+      return null;
+    }
+    
+    function findObjectStyle(doc, styleName) {
+      for (var i = 0; i < doc.objectStyles.length; i++) {
+        if (doc.objectStyles[i].name === styleName) {
+          return doc.objectStyles[i];
+        }
+      }
+      return null;
+    }
+    
+    // Criteria matching functions
+    function matchesTextFrameCriteria(frame, criteria) {
+      if (criteria.layer_name && (!frame.itemLayer || frame.itemLayer.name !== criteria.layer_name)) {
+        return false;
+      }
+      if (criteria.content_match && frame.contents.indexOf(criteria.content_match) === -1) {
+        return false;
+      }
+      return true;
+    }
+    
+    function matchesParagraphCriteria(paragraph, criteria) {
+      if (criteria.current_style) {
+        if (!paragraph.appliedParagraphStyle || paragraph.appliedParagraphStyle.name !== criteria.current_style) {
+          return false;
+        }
+      }
+      if (criteria.content_match && paragraph.contents.indexOf(criteria.content_match) === -1) {
+        return false;
+      }
+      return true;
+    }
+    
+    function matchesCharacterCriteria(character, criteria) {
+      if (criteria.current_style) {
+        if (!character.appliedCharacterStyle || character.appliedCharacterStyle.name !== criteria.current_style) {
+          return false;
+        }
+      }
+      if (criteria.content_match && character.contents.indexOf(criteria.content_match) === -1) {
+        return false;
+      }
+      return true;
+    }
+    
+    function matchesObjectCriteria(item, criteria) {
+      if (criteria.layer_name && (!item.itemLayer || item.itemLayer.name !== criteria.layer_name)) {
+        return false;
+      }
+      if (criteria.current_style) {
+        if (!item.appliedObjectStyle || item.appliedObjectStyle.name !== criteria.current_style) {
+          return false;
+        }
+      }
+      return true;
+    }
+    
+    result.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error applying batch styles: ${result.error}`
     }]
   };
 }

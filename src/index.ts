@@ -17,7 +17,7 @@ import { setTelemetryEnabled } from "./tools/index.js";
 /**
  * Server configuration and identity
  */
-const SERVER_CONFIG = {
+export const SERVER_CONFIG = {
   name: "indesign-mcp",
   version: "1.0.0"
 } as const;

@@ -5,7 +5,7 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScript } from "../../extendscript.js";
+import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { TransformationType, AlignmentType, DistributionType } from "../../types.js";
 
 /**
@@ -426,6 +426,251 @@ export async function registerTransformTools(server: McpServer): Promise<void> {
           content: [{
             type: "text",
             text: `Align/distribute failed: ${result.error}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Register apply_bulk_transforms tool
+  server.tool(
+    "apply_bulk_transforms",
+    {
+      target_type: z.enum(["text_frames", "rectangles", "all_objects"]).describe("Type of objects to transform"),
+      pages: z.array(z.number()).describe("Page numbers to apply transforms on (1-based)"),
+      transform: z.object({
+        type: z.enum(["move", "scale", "rotate", "shear"]).describe("Type of transformation"),
+        angle: z.number().optional().describe("Angle for rotation or shear in degrees"),
+        offset_x: z.number().optional().describe("X offset for move"),
+        offset_y: z.number().optional().describe("Y offset for move"),
+        scale_x: z.number().optional().describe("X scale factor (1.0 = 100%)"),
+        scale_y: z.number().optional().describe("Y scale factor (1.0 = 100%)")
+      }).describe("Transform parameters"),
+      filter_by_content: z.string().optional().describe("Only transform objects containing this text"),
+      filter_by_layer: z.string().optional().describe("Only transform objects on this layer"),
+      filter_by_style: z.string().optional().describe("Only transform objects with this style name")
+    },
+    async (args) => {
+      const targetType = args.target_type;
+      const pages = args.pages || [];
+      const transform = args.transform;
+      const contentFilter = args.filter_by_content ? escapeExtendScriptString(args.filter_by_content) : "";
+      const layerFilter = args.filter_by_layer ? escapeExtendScriptString(args.filter_by_layer) : "";
+      const styleFilter = args.filter_by_style ? escapeExtendScriptString(args.filter_by_style) : "";
+
+      const pagesJson = JSON.stringify(pages);
+
+      const script = `
+        if (app.documents.length === 0) {
+          throw new Error("No documents are open in InDesign. Please open a document first.");
+        }
+        
+        var doc = app.activeDocument;
+        if (!doc) {
+          throw new Error("No active document found.");
+        }
+        
+        try {
+          var results = [];
+          var transformedCount = 0;
+          var skippedCount = 0;
+          var errorCount = 0;
+          var pageNumbers = ${pagesJson};
+          
+          results.push("Bulk transform operation:");
+          results.push("  Target type: ${targetType}");
+          results.push("  Transform: ${transform.type}");
+          results.push("  Pages: " + pageNumbers.join(", "));
+          
+          if ("${contentFilter}" !== "") {
+            results.push("  Content filter: '${contentFilter}'");
+          }
+          if ("${layerFilter}" !== "") {
+            results.push("  Layer filter: '${layerFilter}'");
+          }
+          if ("${styleFilter}" !== "") {
+            results.push("  Style filter: '${styleFilter}'");
+          }
+          results.push("");
+          
+          // Process each specified page
+          for (var pageIdx = 0; pageIdx < pageNumbers.length; pageIdx++) {
+            var pageNum = pageNumbers[pageIdx] - 1; // Convert to 0-based
+            
+            if (pageNum < 0 || pageNum >= doc.pages.length) {
+              results.push("Skipping invalid page number: " + (pageNum + 1));
+              continue;
+            }
+            
+            var page = doc.pages[pageNum];
+            var pageObjects = [];
+            
+            // Collect objects based on target type
+            switch ("${targetType}") {
+              case "text_frames":
+                for (var i = 0; i < page.textFrames.length; i++) {
+                  pageObjects.push(page.textFrames[i]);
+                }
+                break;
+              case "rectangles":
+                for (var i = 0; i < page.rectangles.length; i++) {
+                  pageObjects.push(page.rectangles[i]);
+                }
+                break;
+              case "all_objects":
+              default:
+                for (var i = 0; i < page.allPageItems.length; i++) {
+                  pageObjects.push(page.allPageItems[i]);
+                }
+                break;
+            }
+            
+            // Apply filters and transformations
+            for (var objIdx = 0; objIdx < pageObjects.length; objIdx++) {
+              var obj = pageObjects[objIdx];
+              
+              try {
+                var shouldTransform = true;
+                var filterReason = "";
+                
+                // Apply content filter
+                if ("${contentFilter}" !== "" && obj.hasOwnProperty('contents')) {
+                  if (!obj.contents || obj.contents.indexOf("${contentFilter}") < 0) {
+                    shouldTransform = false;
+                    filterReason = "content does not contain '${contentFilter}'";
+                  }
+                }
+                
+                // Apply layer filter
+                if (shouldTransform && "${layerFilter}" !== "") {
+                  if (!obj.itemLayer || obj.itemLayer.name !== "${layerFilter}") {
+                    shouldTransform = false;
+                    filterReason = "not on layer '${layerFilter}'";
+                  }
+                }
+                
+                // Apply style filter (for text frames with styles)
+                if (shouldTransform && "${styleFilter}" !== "" && obj.hasOwnProperty('paragraphs')) {
+                  var hasMatchingStyle = false;
+                  if (obj.paragraphs.length > 0) {
+                    for (var p = 0; p < obj.paragraphs.length; p++) {
+                      if (obj.paragraphs[p].appliedParagraphStyle.name === "${styleFilter}") {
+                        hasMatchingStyle = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (!hasMatchingStyle) {
+                    shouldTransform = false;
+                    filterReason = "no paragraphs with style '${styleFilter}'";
+                  }
+                }
+                
+                if (!shouldTransform) {
+                  skippedCount++;
+                  continue;
+                }
+                
+                // Apply the transformation
+                switch ("${transform.type}") {
+                  case "move":
+                    var offsetX = ${transform.offset_x || 0};
+                    var offsetY = ${transform.offset_y || 0};
+                    var currentBounds = obj.geometricBounds;
+                    obj.geometricBounds = [
+                      currentBounds[0] + offsetY,
+                      currentBounds[1] + offsetX,
+                      currentBounds[2] + offsetY,
+                      currentBounds[3] + offsetX
+                    ];
+                    break;
+                    
+                  case "scale":
+                    var scaleX = ${transform.scale_x || 1.0};
+                    var scaleY = ${transform.scale_y || 1.0};
+                    obj.resize(CoordinateSpaces.INNER_COORDINATES, AnchorPoint.CENTER_ANCHOR, 
+                              ResizeMethods.MULTIPLYING_CURRENT_DIMENSIONS_BY,
+                              [scaleX * 100, scaleY * 100]);
+                    break;
+                    
+                  case "rotate":
+                    var angle = ${transform.angle || 0};
+                    obj.rotationAngle = angle;
+                    break;
+                    
+                  case "shear":
+                    var shearAngle = ${transform.angle || 0};
+                    obj.shearAngle = shearAngle;
+                    break;
+                }
+                
+                transformedCount++;
+                
+              } catch (objError) {
+                errorCount++;
+                results.push("Error transforming object on page " + (pageNum + 1) + ": " + objError.message);
+              }
+            }
+            
+            results.push("Page " + (pageNum + 1) + ": processed " + pageObjects.length + " objects");
+          }
+          
+          results.push("");
+          results.push("Summary:");
+          results.push("  Transformed: " + transformedCount);
+          results.push("  Skipped (filters): " + skippedCount);
+          results.push("  Errors: " + errorCount);
+          
+          JSON.stringify({
+            success: true,
+            transformed: transformedCount,
+            skipped: skippedCount,
+            errors: errorCount,
+            details: results
+          });
+          
+        } catch (e) {
+          throw new Error("Bulk transform failed: " + e.message);
+        }
+      `;
+
+      const result = await executeExtendScript(script);
+
+      if (result.success) {
+        try {
+          const transformResult = JSON.parse(result.result!);
+          
+          let statusMessage = `apply_bulk_transforms completed: ${transformResult.transformed} objects transformed`;
+          
+          if (transformResult.skipped > 0) {
+            statusMessage += `, ${transformResult.skipped} skipped by filters`;
+          }
+          
+          if (transformResult.errors > 0) {
+            statusMessage += `, ${transformResult.errors} errors`;
+          }
+          
+          statusMessage += `\\n\\nDetails:\\n${transformResult.details.join('\\n')}`;
+
+          return {
+            content: [{
+              type: "text",
+              text: statusMessage
+            }]
+          };
+        } catch (parseError) {
+          return {
+            content: [{
+              type: "text",
+              text: `apply_bulk_transforms completed but result parsing failed: ${result.result}`
+            }]
+          };
+        }
+      } else {
+        return {
+          content: [{
+            type: "text",
+            text: `apply_bulk_transforms failed: ${result.error}`
           }]
         };
       }

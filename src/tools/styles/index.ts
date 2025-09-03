@@ -33,9 +33,7 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
       story_index: z.number().optional().describe("Story index to apply style to (0-based). Overrides selection if provided"),
       paragraph_range: z.string().optional().describe("Paragraph range within the story (e.g. '1-3' or '5')")
     },
-    async (args) => {
-      return await handleApplyParagraphStyle(args);
-    }
+    handleApplyParagraphStyle
   );
 
   // Register create_paragraph_style tool
@@ -131,6 +129,48 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
       return await handleCheckFontAvailability(args);
     }
   );
+
+  // Register list_object_styles tool
+  server.tool(
+    "list_object_styles",
+    {},
+    async (args) => {
+      return await handleListObjectStyles(args);
+    }
+  );
+
+  // Register apply_object_style tool
+  server.tool(
+    "apply_object_style",
+    {
+      style_name: z.string().describe("Name of the object style to apply"),
+      target_selection: z.enum(["selection", "all_objects", "by_layer"]).default("selection").describe("Target objects to apply style to"),
+      layer_name: z.string().optional().describe("Layer name when target_selection is 'by_layer'"),
+      page_range: z.union([z.literal("all"), z.array(z.number())]).default("all").describe("Pages to apply on (1-based page numbers or 'all')")
+    },
+    async (args) => {
+      return await handleApplyObjectStyle(args);
+    }
+  );
+
+  // Register update_object_style tool
+  server.tool(
+    "update_object_style",
+    {
+      style_name: z.string().describe("Name of the object style to update"),
+      properties: z.object({
+        fill_color: z.string().optional().describe("Fill color swatch name"),
+        stroke_color: z.string().optional().describe("Stroke color swatch name"),
+        stroke_width: z.number().optional().describe("Stroke width in points"),
+        transparency: z.number().optional().describe("Transparency percentage (0-100)"),
+        drop_shadow: z.boolean().optional().describe("Enable/disable drop shadow"),
+        corner_radius: z.number().optional().describe("Corner radius for rectangles")
+      }).describe("Properties to update")
+    },
+    async (args) => {
+      return await handleUpdateObjectStyle(args);
+    }
+  );
 }
 
 
@@ -178,7 +218,7 @@ async function handleListParagraphStyles(_args: any): Promise<{ content: TextCon
   };
 }
 
-async function handleApplyParagraphStyle(args: any): Promise<{ content: TextContent[] }> {
+async function handleApplyParagraphStyle(args: any) {
   if (!args.style_name) {
     throw new Error("style_name parameter is required");
   }
@@ -201,75 +241,178 @@ async function handleApplyParagraphStyle(args: any): Promise<{ content: TextCont
     
     // Find the paragraph style
     var targetStyle = null;
-    for (var i = 0; i < doc.paragraphStyles.length; i++) {
-      if (doc.paragraphStyles[i].name === "${styleName}") {
-        targetStyle = doc.paragraphStyles[i];
-        break;
+    try {
+      targetStyle = doc.paragraphStyles.itemByName("${styleName}");
+      if (!targetStyle.isValid) {
+        throw new Error("Style not found");
       }
-    }
-    
-    if (!targetStyle) {
-      throw new Error("Paragraph style '" + "${styleName}" + "' not found.");
+    } catch (e) {
+      throw new Error("Paragraph style '" + "${styleName}" + "' not found. Available styles: " + 
+                      doc.paragraphStyles.everyItem().name.join(", "));
     }
     
     var appliedCount = 0;
+    var results = [];
     
-    if (${storyIndex} >= 0) {
-      // Apply to an entire story or range without selection
-      if (app.documents.length === 0) { throw new Error('No active doc'); }
-      var s = doc.stories[${storyIndex}];
-      if (!s) { throw new Error('Story index out of range'); }
-      var paraIndices = [];
-      if ("${paragraphRange}" !== "") {
-        if ("${paragraphRange}".indexOf('-') !== -1) {
-          var pr = "${paragraphRange}".split('-');
-          var start = parseInt(pr[0],10)-1; var end = parseInt(pr[1],10)-1;
-          for(var pi=start; pi<=end; pi++){ paraIndices.push(pi); }
-        } else { paraIndices.push(parseInt("${paragraphRange}",10)-1); }
+    try {
+      if (${storyIndex} >= 0) {
+        // Apply to an entire story or range without selection
+        if (doc.stories.length <= ${storyIndex}) {
+          throw new Error('Story index ${storyIndex} out of range (have ' + doc.stories.length + ' stories)');
+        }
+        
+        var story = doc.stories[${storyIndex}];
+        var paragraphsToStyle = [];
+        
+        if ("${paragraphRange}" !== "") {
+          if ("${paragraphRange}".indexOf('-') !== -1) {
+            var range = "${paragraphRange}".split('-');
+            var start = parseInt(range[0], 10) - 1;
+            var end = parseInt(range[1], 10) - 1;
+            
+            if (start < 0) start = 0;
+            if (end >= story.paragraphs.length) end = story.paragraphs.length - 1;
+            
+            for (var i = start; i <= end; i++) {
+              paragraphsToStyle.push(i);
+            }
+          } else {
+            var singlePara = parseInt("${paragraphRange}", 10) - 1;
+            if (singlePara >= 0 && singlePara < story.paragraphs.length) {
+              paragraphsToStyle.push(singlePara);
+            }
+          }
+        } else {
+          // Apply to all paragraphs in story
+          for (var i = 0; i < story.paragraphs.length; i++) {
+            paragraphsToStyle.push(i);
+          }
+        }
+        
+        for (var j = 0; j < paragraphsToStyle.length; j++) {
+          var paraIndex = paragraphsToStyle[j];
+          if (paraIndex >= 0 && paraIndex < story.paragraphs.length) {
+            story.paragraphs[paraIndex].appliedParagraphStyle = targetStyle;
+            appliedCount++;
+          }
+        }
+        
+        results.push("Applied to story " + ${storyIndex} + ": " + appliedCount + " paragraphs");
+        
+      } else if ("${targetText}" === "") {
+        // Apply to current selection or smart selection
+        var selectionFound = false;
+        
+        if (app.selection.length > 0) {
+          var selection = app.selection[0];
+          
+          // Check if it's a text selection
+          if (selection.hasOwnProperty("paragraphs")) {
+            try {
+              for (var j = 0; j < selection.paragraphs.length; j++) {
+                selection.paragraphs[j].appliedParagraphStyle = targetStyle;
+                appliedCount++;
+              }
+              selectionFound = true;
+              results.push("Applied to text selection: " + appliedCount + " paragraphs");
+            } catch (selErr) {
+              results.push("Error applying to selection: " + selErr.message);
+            }
+          }
+          // Check if it's a text frame selection
+          else if (selection.hasOwnProperty("contents") && selection.constructor.name === "TextFrame") {
+            try {
+              for (var j = 0; j < selection.paragraphs.length; j++) {
+                selection.paragraphs[j].appliedParagraphStyle = targetStyle;
+                appliedCount++;
+              }
+              selectionFound = true;
+              results.push("Applied to selected text frame: " + appliedCount + " paragraphs");
+            } catch (frameErr) {
+              results.push("Error applying to text frame: " + frameErr.message);
+            }
+          }
+        }
+        
+        if (!selectionFound) {
+          // Fallback: apply to first text frame if no selection
+          if (doc.textFrames.length > 0) {
+            var firstFrame = doc.textFrames[0];
+            try {
+              for (var j = 0; j < firstFrame.paragraphs.length; j++) {
+                firstFrame.paragraphs[j].appliedParagraphStyle = targetStyle;
+                appliedCount++;
+              }
+              results.push("No selection found. Applied to first text frame: " + appliedCount + " paragraphs");
+            } catch (fallbackErr) {
+              throw new Error("No text selection found and unable to apply to first text frame: " + fallbackErr.message);
+            }
+          } else {
+            throw new Error("No text selection found and no text frames in document. Please select text or provide target_text/story_index.");
+          }
+        }
+        
       } else {
-        for(var pi=0; pi<s.paragraphs.length; pi++){ paraIndices.push(pi); }
-      }
-      for(var k=0;k<paraIndices.length;k++){
-        var idx = paraIndices[k];
-        if (idx>=0 && idx < s.paragraphs.length) {
-          s.paragraphs[idx].appliedParagraphStyle = targetStyle;
-          appliedCount++;
+        // Find and apply to specific text
+        try {
+          app.findGrepPreferences = NothingEnum.nothing;
+          app.changeGrepPreferences = NothingEnum.nothing;
+          
+          app.findGrepPreferences.findWhat = "${targetText}";
+          
+          var found = doc.findGrep();
+          
+          if (found.length === 0) {
+            throw new Error("Text '${targetText}' not found in document");
+          }
+          
+          var maxToProcess = ${allOccurrences} ? found.length : 1;
+          
+          for (var k = 0; k < maxToProcess && k < found.length; k++) {
+            try {
+              // Get the parent paragraph of the found text
+              var foundText = found[k];
+              var paragraph = foundText.paragraphs[0];
+              paragraph.appliedParagraphStyle = targetStyle;
+              appliedCount++;
+            } catch (applyErr) {
+              results.push("Error applying style to occurrence " + (k + 1) + ": " + applyErr.message);
+            }
+          }
+          
+          results.push("Found and styled " + appliedCount + " occurrences of '${targetText}'");
+          
+        } catch (searchErr) {
+          throw new Error("Error searching for text: " + searchErr.message);
+        } finally {
+          // Clean up search preferences
+          try {
+            app.findGrepPreferences = NothingEnum.nothing;
+            app.changeGrepPreferences = NothingEnum.nothing;
+          } catch (cleanupErr) {
+            // Ignore cleanup errors
+          }
         }
       }
-    } else if ("${targetText}" === "") {
-      // Apply to current selection
-      if (app.selection.length > 0 && app.selection[0].hasOwnProperty("paragraphs")) {
-        var selection = app.selection[0];
-        for (var j = 0; j < selection.paragraphs.length; j++) {
-          selection.paragraphs[j].appliedParagraphStyle = targetStyle;
-          appliedCount++;
-        }
-      } else {
-        throw new Error("No text selection found. Provide target_text or story_index/paragraph_range.");
-      }
-    } else {
-      // Find and apply to specific text
-      app.findGrepPreferences = NothingEnum.nothing;
-      app.findGrepPreferences.findWhat = "${targetText}";
       
-      var found = doc.findGrep(${allOccurrences});
-      
-      for (var k = 0; k < found.length; k++) {
-        found[k].paragraphs[0].appliedParagraphStyle = targetStyle;
-        appliedCount++;
+      // Build final result
+      var resultMessage = "Applied paragraph style '${styleName}' to " + appliedCount + " paragraph(s)";
+      if (results.length > 0) {
+        resultMessage += "\\\\nDetails: " + results.join(", ");
       }
       
-      app.findGrepPreferences = NothingEnum.nothing;
+      resultMessage;
+      
+    } catch (mainErr) {
+      throw new Error("Failed to apply paragraph style: " + mainErr.message);
     }
-    
-    "Applied paragraph style '" + "${styleName}" + "' to " + appliedCount + " paragraph(s)";
   `;
   
   const result = await executeExtendScript(script);
   
   return {
     content: [{
-      type: "text",
+      type: "text" as const,
       text: result.success ? `Successfully applied paragraph style: ${result.result}` : `Error applying paragraph style: ${result.error}`
     }]
   };
@@ -375,23 +518,25 @@ async function handleSelectTextRange(args: any): Promise<{ content: TextContent[
       throw new Error("No active document found.");
     }
     
-    var selection;
+    var selectionResult = "";
     
     switch("${selectionType}") {
       case "paragraph_number":
         if (doc.stories.length <= ${storyIndex}) {
-          throw new Error("Story index out of range.");
+          throw new Error("Story index out of range. Document has " + doc.stories.length + " stories.");
         }
         
         var story = doc.stories[${storyIndex}];
         var paragraphs = story.paragraphs;
         
         if (${paragraphNumber} < 1 || ${paragraphNumber} > paragraphs.length) {
-          throw new Error("Paragraph number out of range.");
+          throw new Error("Paragraph number out of range. Story has " + paragraphs.length + " paragraphs.");
         }
         
-        selection = paragraphs[${paragraphNumber} - 1];
-        selection.select();
+        var targetParagraph = paragraphs[${paragraphNumber} - 1];
+        // Use app.selection to set the selection properly
+        app.selection = [targetParagraph];
+        selectionResult = "Selected paragraph " + ${paragraphNumber} + " from story " + ${storyIndex};
         break;
         
       case "text_content":
@@ -400,23 +545,28 @@ async function handleSelectTextRange(args: any): Promise<{ content: TextContent[
         
         var found = doc.findGrep();
         if (found.length === 0) {
-          throw new Error("Text content not found.");
+          throw new Error("Text content not found: '${textContent}'");
         }
         
-        found[0].select();
+        // Select the first found instance
+        app.selection = [found[0]];
         app.findGrepPreferences = NothingEnum.nothing;
+        selectionResult = "Selected text content: first occurrence of '${textContent}'";
         break;
         
       case "story_range":
         if (doc.stories.length <= ${storyIndex}) {
-          throw new Error("Story index out of range.");
+          throw new Error("Story index out of range. Document has " + doc.stories.length + " stories.");
         }
         
-        doc.stories[${storyIndex}].select();
+        var targetStory = doc.stories[${storyIndex}];
+        // Select the entire story by setting selection to the story's text range
+        app.selection = [targetStory.texts.itemByRange(0, -1)];
+        selectionResult = "Selected entire story " + ${storyIndex} + " (" + targetStory.contents.length + " characters)";
         break;
     }
     
-    "Text selection successful.";
+    selectionResult;
   `;
   
   const result = await executeExtendScript(script);
@@ -713,4 +863,332 @@ async function handleCheckFontAvailability(args: any): Promise<{ content: TextCo
     return { content: [{ type: "text", text: `❌ Missing fonts: ${payload.missing.join(", ")}` }] };
   }
   return { content: [{ type: "text", text: lines.join("\n") }] };
+}
+
+async function handleListObjectStyles(_args: any): Promise<{ content: TextContent[] }> {
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    var styleList = [];
+    styleList.push("=== Object Styles in " + doc.name + " ===");
+    styleList.push("");
+    
+    for (var i = 0; i < doc.objectStyles.length; i++) {
+      var style = doc.objectStyles[i];
+      var styleInfo = (i + 1) + ". " + style.name;
+      
+      try {
+        // Try to get basic properties
+        var properties = [];
+        
+        if (style.fillColor && style.fillColor.name !== "[None]") {
+          properties.push("Fill: " + style.fillColor.name);
+        }
+        
+        if (style.strokeColor && style.strokeColor.name !== "[None]") {
+          properties.push("Stroke: " + style.strokeColor.name);
+        }
+        
+        if (style.strokeWeight !== undefined && style.strokeWeight > 0) {
+          properties.push("Weight: " + style.strokeWeight + "pt");
+        }
+        
+        if (properties.length > 0) {
+          styleInfo += " (" + properties.join(", ") + ")";
+        }
+      } catch(e) {
+        // Skip property if not accessible
+      }
+      
+      styleList.push(styleInfo);
+    }
+    
+    styleList.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error listing object styles: ${result.error}`
+    }]
+  };
+}
+
+async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent[] }> {
+  const { style_name, target_selection = "selection", layer_name, page_range = "all" } = args;
+  
+  const styleName = escapeExtendScriptString(style_name);
+  const layerName = layer_name ? escapeExtendScriptString(layer_name) : "";
+  const pageRangeJson = page_range === "all" ? "all" : JSON.stringify(page_range);
+  
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    // Get the object style
+    var objectStyle = doc.objectStyles.itemByName("${styleName}");
+    if (!objectStyle.isValid) {
+      throw new Error("Object style '${styleName}' not found.");
+    }
+    
+    var applied = 0;
+    var errors = 0;
+    var results = [];
+    
+    try {
+      if ("${target_selection}" === "selection") {
+        // Apply to current selection
+        if (app.selection.length === 0) {
+          throw new Error("No objects selected. Please select objects or choose a different target.");
+        }
+        
+        for (var s = 0; s < app.selection.length; s++) {
+          try {
+            var obj = app.selection[s];
+            if (obj.hasOwnProperty('appliedObjectStyle')) {
+              obj.appliedObjectStyle = objectStyle;
+              applied++;
+            }
+          } catch (e) {
+            errors++;
+          }
+        }
+        
+        results.push("Applied '" + "${styleName}" + "' to " + applied + " selected objects");
+        
+      } else if ("${target_selection}" === "all_objects") {
+        // Apply to all objects on specified pages
+        var targetPages = ${pageRangeJson};
+        var pagesToProcess = [];
+        
+        if (targetPages === "all") {
+          for (var p = 0; p < doc.pages.length; p++) {
+            pagesToProcess.push(doc.pages[p]);
+          }
+        } else {
+          for (var p = 0; p < targetPages.length; p++) {
+            var pageNum = targetPages[p];
+            if (pageNum > 0 && pageNum <= doc.pages.length) {
+              pagesToProcess.push(doc.pages[pageNum - 1]);
+            }
+          }
+        }
+        
+        for (var p = 0; p < pagesToProcess.length; p++) {
+          var page = pagesToProcess[p];
+          var allItems = page.allPageItems;
+          
+          for (var i = 0; i < allItems.length; i++) {
+            try {
+              var item = allItems[i];
+              if (item.hasOwnProperty('appliedObjectStyle')) {
+                item.appliedObjectStyle = objectStyle;
+                applied++;
+              }
+            } catch (e) {
+              errors++;
+            }
+          }
+        }
+        
+        results.push("Applied '" + "${styleName}" + "' to " + applied + " objects across " + pagesToProcess.length + " pages");
+        
+      } else if ("${target_selection}" === "by_layer") {
+        if ("${layerName}" === "") {
+          throw new Error("Layer name is required when target_selection is 'by_layer'.");
+        }
+        
+        var targetLayer = doc.layers.itemByName("${layerName}");
+        if (!targetLayer.isValid) {
+          throw new Error("Layer '${layerName}' not found.");
+        }
+        
+        // Find all objects on this layer
+        var targetPages = ${pageRangeJson};
+        var pagesToProcess = [];
+        
+        if (targetPages === "all") {
+          for (var p = 0; p < doc.pages.length; p++) {
+            pagesToProcess.push(doc.pages[p]);
+          }
+        } else {
+          for (var p = 0; p < targetPages.length; p++) {
+            var pageNum = targetPages[p];
+            if (pageNum > 0 && pageNum <= doc.pages.length) {
+              pagesToProcess.push(doc.pages[pageNum - 1]);
+            }
+          }
+        }
+        
+        for (var p = 0; p < pagesToProcess.length; p++) {
+          var page = pagesToProcess[p];
+          var allItems = page.allPageItems;
+          
+          for (var i = 0; i < allItems.length; i++) {
+            try {
+              var item = allItems[i];
+              if (item.itemLayer === targetLayer && item.hasOwnProperty('appliedObjectStyle')) {
+                item.appliedObjectStyle = objectStyle;
+                applied++;
+              }
+            } catch (e) {
+              errors++;
+            }
+          }
+        }
+        
+        results.push("Applied '" + "${styleName}" + "' to " + applied + " objects on layer '" + "${layerName}" + "'");
+      }
+      
+      if (errors > 0) {
+        results.push("Errors encountered: " + errors + " objects could not be styled");
+      }
+      
+    } catch (mainError) {
+      throw new Error("Apply object style failed: " + mainError.message);
+    }
+    
+    results.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error applying object style: ${result.error}`
+    }]
+  };
+}
+
+async function handleUpdateObjectStyle(args: any): Promise<{ content: TextContent[] }> {
+  const { style_name, properties } = args;
+  
+  const styleName = escapeExtendScriptString(style_name);
+  const props = properties || {};
+  
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    // Get the object style
+    var objectStyle = doc.objectStyles.itemByName("${styleName}");
+    if (!objectStyle.isValid) {
+      throw new Error("Object style '${styleName}' not found.");
+    }
+    
+    var results = [];
+    var updated = 0;
+    var errors = 0;
+    
+    results.push("Updating object style: '${styleName}'");
+    results.push("==============================");
+    
+    try {
+      // Update fill color
+      ${props.fill_color ? `
+        var fillSwatch = doc.swatches.itemByName("${escapeExtendScriptString(props.fill_color)}");
+        if (fillSwatch.isValid) {
+          objectStyle.fillColor = fillSwatch;
+          results.push("✓ Fill color: ${escapeExtendScriptString(props.fill_color)}");
+          updated++;
+        } else {
+          results.push("✗ Fill swatch not found: ${escapeExtendScriptString(props.fill_color)}");
+          errors++;
+        }
+      ` : ''}
+      
+      // Update stroke color  
+      ${props.stroke_color ? `
+        var strokeSwatch = doc.swatches.itemByName("${escapeExtendScriptString(props.stroke_color)}");
+        if (strokeSwatch.isValid) {
+          objectStyle.strokeColor = strokeSwatch;
+          results.push("✓ Stroke color: ${escapeExtendScriptString(props.stroke_color)}");
+          updated++;
+        } else {
+          results.push("✗ Stroke swatch not found: ${escapeExtendScriptString(props.stroke_color)}");
+          errors++;
+        }
+      ` : ''}
+      
+      // Update stroke width
+      ${props.stroke_width !== undefined ? `
+        objectStyle.strokeWeight = ${props.stroke_width};
+        results.push("✓ Stroke width: ${props.stroke_width}pt");
+        updated++;
+      ` : ''}
+      
+      // Update transparency
+      ${props.transparency !== undefined ? `
+        objectStyle.transparency = ${props.transparency};
+        results.push("✓ Transparency: ${props.transparency}%");
+        updated++;
+      ` : ''}
+      
+      // Update drop shadow
+      ${props.drop_shadow !== undefined ? `
+        try {
+          objectStyle.enableDropShadow = ${props.drop_shadow ? "true" : "false"};
+          results.push("✓ Drop shadow: ${props.drop_shadow ? "enabled" : "disabled"}");
+          updated++;
+        } catch (e) {
+          results.push("✗ Drop shadow setting failed: " + e.message);
+          errors++;
+        }
+      ` : ''}
+      
+      // Update corner radius (for rectangle frames)
+      ${props.corner_radius !== undefined ? `
+        try {
+          objectStyle.topLeftCornerRadius = ${props.corner_radius};
+          objectStyle.topRightCornerRadius = ${props.corner_radius};
+          objectStyle.bottomLeftCornerRadius = ${props.corner_radius};
+          objectStyle.bottomRightCornerRadius = ${props.corner_radius};
+          results.push("✓ Corner radius: ${props.corner_radius}pt");
+          updated++;
+        } catch (e) {
+          results.push("✗ Corner radius setting failed: " + e.message);
+          errors++;
+        }
+      ` : ''}
+      
+      results.push("");
+      results.push("Summary: " + updated + " properties updated, " + errors + " errors");
+      
+    } catch (updateError) {
+      throw new Error("Update object style failed: " + updateError.message);
+    }
+    
+    results.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error updating object style: ${result.error}`
+    }]
+  };
 }

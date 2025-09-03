@@ -74,3 +74,4 @@ docs/
 # Root markdown files (PRDs and guides)
 /*.md
 !README.md
+!MCP-TOOL-DEVELOPMENT-GUIDE.md

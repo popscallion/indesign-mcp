@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 🎯 Project Overview
 Building an **AI-driven InDesign automation platform** using TypeScript MCP (Model Context Protocol) server that bridges LLMs with Adobe InDesign via ExtendScript.
 
-**Current State**: Production-ready TypeScript MCP with 52 working tools + foundational resources/prompts
+**Current State**: Production-ready TypeScript MCP with 52+ working tools across 10 categories + telemetry system + evolutionary testing framework
 **Goal**: Complete agentic workflow platform for two MVP scenarios:
 1. **Copy-Design** – Recreate reference page layouts from images
 2. **Add-Content** – Flow new text into existing documents while preserving design
@@ -61,21 +61,101 @@ indesign-mcp/                    # Main TypeScript MCP project
 ```bash
 # Build and run
 npm run build        # Compile TypeScript to dist/
-npm start           # Run MCP server (uses tsx)
-npm run dev         # Development mode with watch
+npm start           # Run MCP server (stdio transport)
+npm start:http      # Run MCP server (HTTP transport)
+npm run dev         # Development mode with watch (stdio)
+npm run dev:http    # Development mode with HTTP + ngrok
 
 # Testing and validation
 npm test            # Run unit tests with Jest
 npm run lint        # Run ESLint on TypeScript files
 npm run lint:fix    # Auto-fix ESLint issues
+npm run typecheck   # Type check both main code and tests
+npm run build:tests # Compile test TypeScript separately
 
-# Validation
+# Validation workflow
 npm run build && npm start    # Validate compilation and server startup
+
+# HTTP Server with ngrok
+MCP_PORT=3000 ENABLE_NGROK=true npm run start:http  # Custom port with ngrok
+ENABLE_NGROK=false npm run start:http               # Local HTTP only
+NGROK_AUTH_TOKEN=your_token npm run start:http     # Authenticated ngrok tunnel
 
 # Evolutionary Testing (Task-based)
 npx tsx src/experimental/evolutionary/runEvolutionTest.ts  # Run the test orchestrator
 # Actual testing is done interactively using Claude Code's Task tool
 ```
+
+## 🖥️ Claude Desktop Integration
+
+### Configure as Desktop Extension
+
+To make all 52+ InDesign MCP tools available in Claude Desktop as native extensions:
+
+**Step 1: Build the Server**
+```bash
+npm run build        # Compile TypeScript to dist/
+```
+
+**Step 2: Configure Claude Desktop**
+
+Edit the Claude Desktop configuration file:
+```bash
+# macOS location
+~/Library/Application Support/Claude/claude_desktop_config.json
+```
+
+Add this configuration:
+```json
+{
+  "mcpServers": {
+    "indesign-mcp": {
+      "command": "node",
+      "args": ["/Users/l/Dev/indesign-mcp/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
+```
+
+**Step 3: Prerequisites & Usage**
+- Adobe InDesign must be running on macOS
+- Document should be open in InDesign (for most tools)
+- Grant macOS automation permissions when prompted
+- Restart Claude Desktop after configuration changes
+
+**Alternative Configurations:**
+
+Development mode with live reloading:
+```json
+{
+  "mcpServers": {
+    "indesign-mcp-dev": {
+      "command": "npx",
+      "args": ["tsx", "watch", "/Users/l/Dev/indesign-mcp/src/index.ts"],
+      "env": {
+        "NODE_ENV": "development"
+      }
+    }
+  }
+}
+```
+
+**Available Tool Categories in Claude Desktop:**
+- **Text Tools (4)**: add_text, update_text, remove_text, get_document_text
+- **Style Tools (9)**: paragraph/character style management, fonts, text selection
+- **Layout Tools (2)**: text frame positioning and creation
+- **Page Tools (4)**: page management, dimensions, navigation
+- **Special Tools (4)**: layers, tables, special characters, status
+- **Utility Tools (7)**: text threading, overset resolution, frame management
+- **Export Tools (6)**: document export, save, import, place files, preview
+- **Transform Tools (3)**: object transformation, duplication, alignment
+- **Composite Tools (7)**: high-level workflow automation
+- **Analysis Tools (7)**: decision tracking, metrics, layout comparison
+
+Once configured, all tools become available as native Claude Desktop extensions through natural conversation.
 
 ## 📋 Git Workflow
 
@@ -182,15 +262,17 @@ Keep these test documents ready:
 
 ## 📊 Implementation Status
 
-### ✅ Completed (52 tools)
+### ✅ Completed (52+ tools across 10 categories)
 - **Text Tools** (4): add_text, update_text, remove_text, get_document_text
-- **Style Tools** (8): paragraph/character style management, text selection
-- **Layout Tools** (3): text frame positioning, creation, and info
-- **Page Tools** (4): page management, dimensions
+- **Style Tools** (7): paragraph/character style management, text selection
+- **Layout Tools** (2): text frame positioning, creation, and info
+- **Page Tools** (3): page management, dimensions
 - **Special Tools** (4): layers, tables, special characters, status
-- **Threading/Flow Tools** (7): text threading, overset resolution, flow management, close_document
-- **Export/Import Tools** (6): document export, save, import content, place files, preview
+- **Utility Tools** (7): text threading, overset resolution, flow management, close_document
+- **Export Tools** (6): document export, save, import content, place files, preview
 - **Transform Tools** (3): object transformation, duplication, alignment
+- **Composite Tools** (7): high-level workflow automation and layout operations
+- **Analysis Tools** (7): decision tracking, metrics extraction, and layout comparison
 
 ### 🎯 Current Priority: LLM Decision-Making Optimization
 1. **Automated testing loops**: Reduce manual validation overhead
@@ -210,9 +292,18 @@ Focus areas for potential expansion:
 ## ⚡ Quick Reference
 
 ### Start Development Session
+
+**Stdio Transport (Traditional MCP)**:
 ```bash
 npm run build && npm start
 # Ensure InDesign is running with a document open
+```
+
+**HTTP Transport with Ngrok (Web Access)**:
+```bash
+npm run build && npm run start:http
+# Automatically creates HTTPS tunnel via ngrok
+# Outputs: https://xyz123.ngrok.app/mcp
 ```
 
 ### Before Implementing New Tools
@@ -241,11 +332,11 @@ npm run build && npm start
 - `layout/` - Text frame positioning (2 tools)
 - `pages/` - Page management (3 tools)
 - `special/` - Layers, tables, special chars (4 tools)
-- `utility/` - Threading, flow management (6 tools + telemetry_end_session)
+- `utility/` - Threading, flow management (7 tools)
 - `export/` - Document export/import (6 tools) 
 - `transform/` - Object transformation (3 tools)
-- `composite/` - High-level workflow tools (3 tools)
-- `analysis/` - Decision tracking and metrics (4 tools)
+- `composite/` - High-level workflow tools (7 tools)
+- `analysis/` - Decision tracking and metrics (7 tools)
 
 ## 🔄 Development Cycle
 1. **Plan**: Select 3 tools from priority list
@@ -299,5 +390,73 @@ For running the evolutionary testing system:
 - Exposes true MCP usability issues without masking them
 - Tests natural tool discovery without hand-holding
 - Reveals where the MCP needs improvement
+
+## 🌐 HTTP Server & Ngrok Integration
+
+### Overview
+The InDesign MCP server supports two transport modes:
+
+1. **Stdio Transport** (default): Traditional MCP over stdin/stdout for local clients
+2. **HTTP Transport**: Server-Sent Events (SSE) over HTTP with automatic ngrok tunneling
+
+### HTTP Server Features
+- **SSE Transport**: Real-time bidirectional communication over HTTP
+- **Automatic Ngrok Integration**: Instant HTTPS public URLs for remote access
+- **CORS Support**: Cross-origin requests for web clients
+- **Health Monitoring**: Built-in health check and status endpoints
+- **Session Management**: Multi-client support with session isolation
+- **Environment Configuration**: Port and ngrok settings via environment variables
+
+### HTTP Endpoints
+```
+GET  /mcp          # Establish SSE connection for MCP communication
+POST /mcp/message  # Send JSON-RPC messages to MCP server
+GET  /health       # Server health check and active session count
+GET  /info         # API documentation and usage information
+```
+
+### Usage Examples
+
+**Quick Development (with ngrok)**:
+```bash
+npm run dev:http                    # Starts on port 3000 with ngrok
+npm run dev:http 4000              # Custom port with ngrok
+```
+
+**Production Configuration**:
+```bash
+# Environment variables
+export MCP_PORT=3000                # Server port (default: 3000)
+export ENABLE_NGROK=true           # Enable ngrok tunneling (default: true)
+export NGROK_AUTH_TOKEN=your_token # Optional: authenticated tunnels
+export CORS_ORIGIN="*"             # CORS policy (default: *)
+
+npm run start:http
+```
+
+**Local Development (no ngrok)**:
+```bash
+ENABLE_NGROK=false npm run start:http
+# Access at: http://localhost:3000/mcp
+```
+
+### Client Integration
+The HTTP server uses SSE transport which requires:
+
+1. **Connection**: GET request to `/mcp` establishes SSE stream
+2. **Messaging**: POST requests to `/mcp/message?session=<id>` send messages  
+3. **Session ID**: Returned in SSE connection, used for message routing
+
+### Ngrok Configuration
+- **Public Tunnels**: Work without authentication (rate limited)
+- **Authenticated Tunnels**: Set `NGROK_AUTH_TOKEN` for higher limits
+- **Custom Domains**: Configure via ngrok account settings
+- **Tunnel URLs**: Automatically logged to console on startup
+
+### Security Considerations
+- CORS headers configurable via `CORS_ORIGIN` environment variable
+- Session-based message routing prevents cross-session data leakage
+- Ngrok tunnels are temporary and expire when server stops
+- Use authenticated ngrok tokens for production workloads
 
 This guide provides Claude Code with essential project context for continuing InDesign MCP development efficiently.

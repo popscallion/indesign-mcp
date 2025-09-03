@@ -6,7 +6,12 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
+    "start:http": "tsx src/http-server.ts",
+    "start:https": "tsx src/https-server.ts",
     "dev": "tsx watch src/index.ts",
+    "dev:http": "./scripts/dev-http.sh",
+    "dev:https": "./scripts/dev-https.sh",
+    "setup:https": "./scripts/setup-https.sh",
     "test": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --ignore-pattern \"src/guidance/**\" --ignore-pattern \"src/intelligence/**\"",
     "lint:fix": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --ignore-pattern \"src/guidance/**\" --ignore-pattern \"src/intelligence/**\" --fix",
