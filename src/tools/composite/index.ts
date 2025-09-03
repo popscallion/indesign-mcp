@@ -1265,14 +1265,7 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
       apply_style: z.string().optional().describe("Paragraph style to apply to all linked instances"),
       preserve_formatting: z.boolean().default(false).describe("Allow different formatting per frame while maintaining content link")
     },
-    withChangeTracking(server, "link_text_to_multiple_frames")(async ({ filePath, target_frames, create_frames_if_missing, apply_style, preserve_formatting }: any, progressLogger: any): Promise<{ content: TextContent[] }> => {
-      // Create fallback progressLogger if not provided
-      const logger = progressLogger || { 
-        log: async (message: string, progress?: { current: number; total: number }) => {
-          // No-op fallback logger
-        } 
-      };
-
+    async ({ filePath, target_frames, create_frames_if_missing, apply_style, preserve_formatting }: any): Promise<{ content: TextContent[] }> => {
       if (!filePath || !target_frames || target_frames.length === 0) {
         return { content:[{ type:"text", text:"link_text_to_multiple_frames error: filePath and target_frames are required" }] };
       }
@@ -1282,8 +1275,6 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
       const shouldCreateFrames = create_frames_if_missing !== false;
       const styleToApply = apply_style ? escapeExtendScriptString(apply_style) : "";
       const shouldPreserveFormatting = preserve_formatting === true;
-
-      await logger.log(`Starting text linking to ${target_frames.length} frames`, { current: 0, total: target_frames.length + 2 });
 
       const jsx = `
         if (app.documents.length === 0) {
@@ -1450,8 +1441,6 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
         });
       `;
 
-      await logger.log("Processing text linking", { current: 1, total: target_frames.length + 2 });
-
       const result = await executeExtendScript(jsx);
       
       if (!result.success) {
@@ -1460,11 +1449,6 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
 
       try {
         const linkResult = JSON.parse(result.result!);
-        
-        await logger.log(`Linking completed: ${linkResult.success}/${linkResult.total} successful`, { 
-          current: target_frames.length + 2, 
-          total: target_frames.length + 2 
-        });
 
         let statusMessage = `link_text_to_multiple_frames completed: ${linkResult.success}/${linkResult.total} frames successfully linked`;
         
@@ -1497,7 +1481,7 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
       } catch (parseError) {
         return { content:[{ type:"text", text:`link_text_to_multiple_frames completed but result parsing failed: ${result.result}` }] };
       }
-    })
+    }
   );
 
   // === batch_link_event_text ======================================
