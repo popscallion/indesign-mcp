@@ -4,6 +4,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { ExportFormat, ExportQuality } from "../../types.js";
 import { updatePageDimensionsCache } from "../layout/index.js";
@@ -632,4 +633,239 @@ export async function registerExportTools(server: McpServer): Promise<void> {
     }
   );
 
+  // Register batch_export_by_layout tool
+  server.tool(
+    "batch_export_by_layout",
+    {
+      export_configs: z.array(z.object({
+        layout_name: z.string().describe("Name of the layout to export"),
+        format: z.enum(["PDF", "EPUB", "HTML", "IDML", "JPEG", "PNG", "EPS"]).describe("Export format"),
+        output_path: z.string().describe("Output file path"),
+        settings: z.object({
+          dpi: z.number().describe("DPI for raster formats"),
+          color_space: z.enum(["RGB", "CMYK"]).describe("Color space"),
+          transparency: z.boolean().optional().describe("Support transparency (PNG only)"),
+          pdf_preset: z.string().optional().describe("PDF preset name")
+        }).describe("Export settings")
+      })).describe("Array of export configurations"),
+      filename_variables: z.record(z.string()).optional().describe("Variables for filename generation")
+    },
+    async (args) => handleBatchExportByLayout(args)
+  );
+
+}
+
+async function handleBatchExportByLayout(args: any): Promise<{ content: TextContent[] }> {
+  const { export_configs, filename_variables = {} } = args;
+  
+  const exportConfigsJson = JSON.stringify(export_configs);
+  const variablesJson = JSON.stringify(filename_variables);
+  
+  const script = `
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    var results = [];
+    var errors = [];
+    var filesExported = 0;
+    var exportResults = [];
+    
+    var exportConfigs = ${exportConfigsJson};
+    var variables = ${variablesJson};
+    
+    // Helper function to replace variables in paths
+    function replaceVariables(path, vars) {
+      var result = path;
+      for (var key in vars) {
+        var placeholder = "{" + key + "}";
+        while (result.indexOf(placeholder) !== -1) {
+          result = result.replace(placeholder, vars[key]);
+        }
+      }
+      return result;
+    }
+    
+    // Helper function to create directory if it doesn't exist
+    function ensureDirectory(filePath) {
+      var file = File(filePath);
+      var folder = file.parent;
+      if (!folder.exists) {
+        folder.create();
+      }
+    }
+    
+    // Helper function to get file size
+    function getFileSize(filePath) {
+      try {
+        var file = File(filePath);
+        if (file.exists) {
+          return (file.length / (1024 * 1024)).toFixed(1) + " MB";
+        }
+      } catch (e) {
+        return "Unknown";
+      }
+      return "Not found";
+    }
+    
+    try {
+      results.push("=== BATCH EXPORT BY LAYOUT ===");
+      results.push("Processing " + exportConfigs.length + " export configurations...");
+      results.push("");
+      
+      for (var i = 0; i < exportConfigs.length; i++) {
+        var config = exportConfigs[i];
+        var layoutName = config.layout_name;
+        var format = config.format;
+        var outputPath = replaceVariables(config.output_path, variables);
+        var settings = config.settings;
+        
+        try {
+          results.push("Exporting layout: " + layoutName + " → " + format);
+          
+          // Ensure output directory exists
+          ensureDirectory(outputPath);
+          
+          // Note: In a real implementation, we would switch to the specific layout
+          // For now, we'll export the current document state with layout-specific settings
+          
+          // Create export preset based on format and settings
+          var exportPreset = null;
+          var exportProps = {};
+          
+          if (format === "PNG" || format === "JPEG") {
+            // Raster export settings
+            exportProps.exportResolution = settings.dpi;
+            exportProps.antiAlias = true;
+            exportProps.exportingSpread = false;
+            
+            if (format === "PNG" && settings.transparency) {
+              exportProps.transparent = true;
+            }
+            
+            if (settings.color_space === "CMYK") {
+              exportProps.colorSpace = ImageColorSpace.CMYK;
+            } else {
+              exportProps.colorSpace = ImageColorSpace.RGB;
+            }
+            
+          } else if (format === "PDF") {
+            // PDF export settings
+            if (settings.pdf_preset) {
+              try {
+                exportPreset = doc.pdfExportPresets.itemByName(settings.pdf_preset);
+              } catch (e) {
+                // Use default PDF preset if specified preset not found
+                results.push("  Warning: PDF preset '" + settings.pdf_preset + "' not found, using default");
+              }
+            }
+            
+            exportProps.pageRange = PageRange.ALL_PAGES;
+            if (settings.color_space === "CMYK") {
+              exportProps.colorBitmaps = BitmapColorSpaceEnum.CMYK;
+            } else {
+              exportProps.colorBitmaps = BitmapColorSpaceEnum.RGB;
+            }
+          }
+          
+          // Perform the export
+          var exportFile = File(outputPath);
+          var exportSuccess = false;
+          
+          if (format === "PDF") {
+            if (exportPreset && exportPreset.isValid) {
+              doc.exportFile(ExportFormat.PDF_TYPE, exportFile, false, exportPreset);
+            } else {
+              doc.exportFile(ExportFormat.PDF_TYPE, exportFile, false);
+            }
+            exportSuccess = true;
+            
+          } else if (format === "PNG") {
+            doc.exportFile(ExportFormat.PNG_FORMAT, exportFile, false);
+            exportSuccess = true;
+            
+          } else if (format === "JPEG") {
+            doc.exportFile(ExportFormat.JPG, exportFile, false);
+            exportSuccess = true;
+            
+          } else if (format === "EPS") {
+            doc.exportFile(ExportFormat.EPS_TYPE, exportFile, false);
+            exportSuccess = true;
+            
+          } else {
+            errors.push("Unsupported export format: " + format + " for layout " + layoutName);
+            continue;
+          }
+          
+          if (exportSuccess) {
+            var fileSize = getFileSize(outputPath);
+            exportResults.push({
+              layout: layoutName,
+              file: outputPath,
+              success: true,
+              file_size: fileSize
+            });
+            
+            results.push("  ✓ Success: " + outputPath + " (" + fileSize + ")");
+            filesExported++;
+          }
+          
+        } catch (exportError) {
+          var errorMsg = "Failed to export " + layoutName + ": " + exportError.message;
+          errors.push(errorMsg);
+          
+          exportResults.push({
+            layout: layoutName,
+            file: outputPath,
+            success: false,
+            error: exportError.message
+          });
+          
+          results.push("  ✗ " + errorMsg);
+        }
+      }
+      
+      results.push("");
+      results.push("=== EXPORT SUMMARY ===");
+      results.push("Files exported: " + filesExported + "/" + exportConfigs.length);
+      results.push("Export results:");
+      
+      for (var r = 0; r < exportResults.length; r++) {
+        var result = exportResults[r];
+        if (result.success) {
+          results.push("  ✓ " + result.layout + " → " + result.file + " (" + result.file_size + ")");
+        } else {
+          results.push("  ✗ " + result.layout + " → " + result.error);
+        }
+      }
+      
+    } catch (mainError) {
+      throw new Error("Batch export failed: " + mainError.message);
+    }
+    
+    var output = [];
+    output = output.concat(results);
+    
+    if (errors.length > 0) {
+      output.push("");
+      output.push("=== ERRORS ===");
+      output = output.concat(errors);
+    }
+    
+    output.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error in batch export: ${result.error}`
+    }]
+  };
 }

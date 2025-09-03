@@ -2092,9 +2092,45 @@ catch (error) {
 }
 ```
 
+## Recent Development Learnings (v69 Tools)
+
+### Advanced Selection Criteria Implementation
+When implementing enhanced selection tools like `apply_object_style` v2:
+- **Object Type Detection**: Use `constructor.name` for reliable object type identification
+- **Criteria Matching**: Build helper functions for complex filtering logic
+- **Dry Run Mode**: Essential for testing selection logic without making changes
+- **Verbose Logging**: Track what was selected/skipped on each page for debugging
+
+### CSV Data Integration Challenges
+From implementing `data_merge_setup`:
+- **CSV Parsing in ExtendScript**: No native CSV support - implement custom parser with quote handling
+- **JSON2 Polyfill**: Always include for JSON operations in ExtendScript
+- **File API**: Use `File()` constructor with proper error handling for file operations
+- **Text Frame Placeholders**: Use `<<column_name>>` format for data merge fields
+
+### Alternate Layout Limitations
+From `create_alternate_layouts` implementation:
+- **API Gap**: InDesign's Alternate Layout feature not fully exposed in ExtendScript
+- **Workaround**: Create separate pages with different dimensions as proxy layouts
+- **Liquid Rules**: Implement manual scaling calculations for responsive behavior
+- **Manual Steps**: Provide clear instructions for features requiring UI interaction
+
+### Batch Export Considerations
+From `batch_export_by_layout`:
+- **Export Format Enums**: Use correct ExtendScript constants (e.g., `ExportFormat.PDF_TYPE`)
+- **Directory Creation**: Always ensure output directories exist before export
+- **Variable Substitution**: Implement template variable replacement for dynamic filenames
+- **File Size Reporting**: Use `File.length` property for post-export validation
+
+### Tool Registration Best Practices
+- **Zod Schema Evolution**: Use `.optional()` and `.default()` for backward compatibility
+- **Import Management**: Always check imports - `TextContent` from SDK types, not local
+- **Helper Functions**: Extract complex ExtendScript logic into reusable functions
+- **Error Context**: Include tool parameters in error messages for debugging
+
 ## Conclusion
 
-This guide captures hard-won lessons from implementing 65+ InDesign MCP tools across 11 categories. The key to success is:
+This guide captures hard-won lessons from implementing 69+ InDesign MCP tools across 11 categories. The key to success is:
 
 1. **Understand ExtendScript Limitations**: Work within its constraints, not against them
 2. **Test False Negatives**: Verify actual results in InDesign UI, don't trust error messages alone
@@ -2102,5 +2138,6 @@ This guide captures hard-won lessons from implementing 65+ InDesign MCP tools ac
 4. **Use Proper API Patterns**: Colors ARE swatches, transparency has nested structure
 5. **Handle JSON Limitations**: Use polyfills or manual string building
 6. **Provide Robust Fallbacks**: Handle edge cases and version differences gracefully
+7. **Document Workarounds**: When APIs are missing, provide clear manual instructions
 
 **Remember**: ExtendScript is NOT JavaScript. Success comes from respecting its unique characteristics and building tools that work with the platform, not against it.

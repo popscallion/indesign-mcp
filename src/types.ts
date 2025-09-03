@@ -360,3 +360,119 @@ export interface SystemFont {
   fullName: string;
   status: string; // e.g., "INSTALLED", "MISSING", etc.
 }
+
+/**
+ * Enhanced object selection criteria for apply_object_style_v2
+ */
+export interface ObjectSelectionCriteria {
+  object_type: string[] | "all";
+  layer_names?: string[] | null;
+  position_bounds?: {
+    x_min: number;
+    x_max: number;
+    y_min: number;
+    y_max: number;
+  } | null;
+  has_fill?: boolean | null;
+  has_stroke?: boolean | null;
+}
+
+/**
+ * Enhanced object style application parameters
+ */
+export interface ObjectStyleApplicationParams {
+  page_range: number[] | "all";
+  style_name: string;
+  target_selection: "all_objects" | "selected" | "by_criteria";
+  selection_criteria?: ObjectSelectionCriteria;
+  verbose_logging?: boolean;
+  dry_run?: boolean;
+}
+
+/**
+ * Data merge field mapping configuration
+ */
+export interface DataMergeFieldMapping {
+  csv_column: string;
+  target_frames: FrameTarget[];
+}
+
+/**
+ * Text frame target for data merge
+ */
+export interface FrameTarget {
+  page: number;
+  frame_index: number;
+}
+
+/**
+ * Data merge setup parameters
+ */
+export interface DataMergeSetupParams {
+  csv_path: string;
+  field_mappings: DataMergeFieldMapping[];
+  auto_create_records?: boolean;
+  preview_record?: number;
+}
+
+/**
+ * Liquid layout rules for alternate layouts
+ */
+export interface LiquidLayoutRules {
+  scale_objects: boolean;
+  reflow_text: boolean;
+  maintain_aspect_ratio?: boolean;
+  crop_strategy?: "center" | "top" | "bottom";
+}
+
+/**
+ * Alternate layout configuration
+ */
+export interface AlternateLayoutConfig {
+  name: string;
+  width: number;
+  height: number;
+  liquid_rules: LiquidLayoutRules;
+}
+
+/**
+ * Base layout configuration
+ */
+export interface BaseLayoutConfig {
+  name: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * Create alternate layouts parameters
+ */
+export interface CreateAlternateLayoutsParams {
+  base_layout: BaseLayoutConfig;
+  alternate_layouts: AlternateLayoutConfig[];
+  copy_content?: boolean;
+  preserve_styling?: boolean;
+}
+
+/**
+ * Export configuration for specific layout
+ */
+export interface LayoutExportConfig {
+  layout_name: string;
+  format: ExportFormat;
+  output_path: string;
+  settings: {
+    dpi: number;
+    color_space: "RGB" | "CMYK";
+    transparency?: boolean;
+    pdf_preset?: string;
+  };
+}
+
+/**
+ * Batch export by layout parameters
+ */
+export interface BatchExportByLayoutParams {
+  export_configs: LayoutExportConfig[];
+  filename_variables?: Record<string, string>;
+}

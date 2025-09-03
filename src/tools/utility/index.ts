@@ -6,7 +6,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript } from "../../extendscript.js";
+import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
 import type { FrameScope, TextFlowAction } from "../../types.js";
 
 /**
@@ -840,6 +840,24 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
       preview_mode: z.boolean().default(false).describe("Preview changes without applying them")
     },
     async (args) => handleBatchApplyStyles(args)
+  );
+
+  // Register data_merge_setup tool
+  server.tool(
+    "data_merge_setup",
+    {
+      csv_path: z.string().describe("Path to CSV file containing data merge fields"),
+      field_mappings: z.array(z.object({
+        csv_column: z.string().describe("CSV column name"),
+        target_frames: z.array(z.object({
+          page: z.number().describe("Page number (1-based)"),
+          frame_index: z.number().describe("Text frame index on page (0-based)")
+        })).describe("Target text frames for this field")
+      })).describe("Mapping of CSV columns to text frames"),
+      auto_create_records: z.boolean().default(true).describe("Automatically create data merge records"),
+      preview_record: z.number().default(1).describe("Record number to preview (1-based)")
+    },
+    async (args) => handleDataMergeSetup(args)
   );
 }
 
@@ -2799,6 +2817,255 @@ async function handleBatchApplyStyles(args: any): Promise<{ content: TextContent
     content: [{
       type: "text" as const,
       text: result.success ? result.result! : `Error applying batch styles: ${result.error}`
+    }]
+  };
+}
+
+async function handleDataMergeSetup(args: any): Promise<{ content: TextContent[] }> {
+  const { csv_path, field_mappings, auto_create_records = true, preview_record = 1 } = args;
+  
+  const csvPath = escapeExtendScriptString(csv_path);
+  const mappingsJson = JSON.stringify(field_mappings);
+  
+  const script = `
+    // JSON2 polyfill for ExtendScript
+    if (typeof JSON === 'undefined') {
+      var JSON = {
+        parse: function(text) {
+          return eval('(' + text + ')');
+        },
+        stringify: function(value) {
+          if (typeof value === 'string') return '"' + value + '"';
+          if (typeof value === 'number') return value.toString();
+          if (typeof value === 'boolean') return value.toString();
+          if (value === null) return 'null';
+          if (value instanceof Array) {
+            var result = [];
+            for (var i = 0; i < value.length; i++) {
+              result.push(JSON.stringify(value[i]));
+            }
+            return '[' + result.join(',') + ']';
+          }
+          if (typeof value === 'object') {
+            var result = [];
+            for (var key in value) {
+              result.push('"' + key + '":' + JSON.stringify(value[key]));
+            }
+            return '{' + result.join(',') + '}';
+          }
+          return 'null';
+        }
+      };
+    }
+    
+    if (app.documents.length === 0) {
+      throw new Error("No documents are open in InDesign.");
+    }
+    
+    var doc = app.activeDocument;
+    if (!doc) {
+      throw new Error("No active document found.");
+    }
+    
+    var results = [];
+    var errors = [];
+    var csvData = [];
+    var fieldMappings = ${mappingsJson};
+    var recordsCreated = 0;
+    var textFramesCreated = 0;
+    
+    try {
+      // Read CSV file
+      results.push("=== READING CSV FILE ===");
+      var csvFile = File("${csvPath}");
+      if (!csvFile.exists) {
+        throw new Error("CSV file not found: ${csvPath}");
+      }
+      
+      csvFile.open('r');
+      var csvContent = csvFile.read();
+      csvFile.close();
+      
+      if (!csvContent || csvContent.length === 0) {
+        throw new Error("CSV file is empty or could not be read");
+      }
+      
+      // Parse CSV content
+      var lines = csvContent.split('\\\\n');
+      if (lines.length < 2) {
+        throw new Error("CSV file must have at least a header row and one data row");
+      }
+      
+      // Parse header
+      var headers = [];
+      var headerLine = lines[0];
+      var inQuotes = false;
+      var currentField = "";
+      var chars = headerLine.split('');
+      
+      for (var c = 0; c < chars.length; c++) {
+        var char = chars[c];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          headers.push(currentField.replace(/^"|"$/g, ''));
+          currentField = "";
+        } else {
+          currentField += char;
+        }
+      }
+      if (currentField) {
+        headers.push(currentField.replace(/^"|"$/g, ''));
+      }
+      
+      results.push("CSV headers found: " + headers.join(", "));
+      
+      // Parse data rows
+      for (var r = 1; r < lines.length; r++) {
+        if (lines[r].trim() === "") continue;
+        
+        var values = [];
+        var dataLine = lines[r];
+        inQuotes = false;
+        currentField = "";
+        chars = dataLine.split('');
+        
+        for (var c = 0; c < chars.length; c++) {
+          var char = chars[c];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(currentField.replace(/^"|"$/g, ''));
+            currentField = "";
+          } else {
+            currentField += char;
+          }
+        }
+        if (currentField) {
+          values.push(currentField.replace(/^"|"$/g, ''));
+        }
+        
+        var record = {};
+        for (var h = 0; h < headers.length; h++) {
+          record[headers[h]] = values[h] || "";
+        }
+        csvData.push(record);
+      }
+      
+      results.push("Records parsed: " + csvData.length);
+      
+      // Validate field mappings
+      results.push("");
+      results.push("=== VALIDATING FIELD MAPPINGS ===");
+      for (var m = 0; m < fieldMappings.length; m++) {
+        var mapping = fieldMappings[m];
+        var columnExists = false;
+        for (var h = 0; h < headers.length; h++) {
+          if (headers[h] === mapping.csv_column) {
+            columnExists = true;
+            break;
+          }
+        }
+        if (!columnExists) {
+          errors.push("CSV column '" + mapping.csv_column + "' not found in headers");
+        } else {
+          results.push("✓ Column '" + mapping.csv_column + "' found");
+        }
+      }
+      
+      if (errors.length > 0) {
+        throw new Error("Field mapping validation failed: " + errors.join("; "));
+      }
+      
+      // Create/verify text frames
+      results.push("");
+      results.push("=== CREATING/VERIFYING TEXT FRAMES ===");
+      for (var m = 0; m < fieldMappings.length; m++) {
+        var mapping = fieldMappings[m];
+        var targetFrames = mapping.target_frames;
+        
+        for (var t = 0; t < targetFrames.length; t++) {
+          var target = targetFrames[t];
+          var pageNum = target.page;
+          var frameIndex = target.frame_index;
+          
+          if (pageNum > doc.pages.length) {
+            errors.push("Page " + pageNum + " does not exist (document has " + doc.pages.length + " pages)");
+            continue;
+          }
+          
+          var page = doc.pages[pageNum - 1];
+          
+          // Check if text frame exists at the specified index
+          if (frameIndex >= page.textFrames.length) {
+            // Create new text frame at default position
+            try {
+              var bounds = [100, 100, 200, 300]; // Default bounds: [y1, x1, y2, x2]
+              var newFrame = page.textFrames.add();
+              newFrame.geometricBounds = bounds;
+              newFrame.contents = "<<" + mapping.csv_column + ">>";
+              textFramesCreated++;
+              results.push("✓ Created text frame for '" + mapping.csv_column + "' on page " + pageNum);
+            } catch (e) {
+              errors.push("Failed to create text frame on page " + pageNum + ": " + e.message);
+            }
+          } else {
+            // Frame exists, add placeholder text
+            var frame = page.textFrames[frameIndex];
+            frame.contents = "<<" + mapping.csv_column + ">>";
+            results.push("✓ Updated existing frame for '" + mapping.csv_column + "' on page " + pageNum);
+          }
+        }
+      }
+      
+      // Set up Data Merge panel (simplified approach - set placeholder text)
+      results.push("");
+      results.push("=== DATA MERGE SETUP ===");
+      results.push("Text frames configured with Data Merge placeholders");
+      results.push("Manual step required: Open Window > Utilities > Data Merge");
+      results.push("Select data source: ${csvPath}");
+      results.push("Preview configured for record ${preview_record}");
+      
+      // Show preview of first record
+      if (csvData.length > 0 && ${preview_record} <= csvData.length) {
+        var previewIndex = ${preview_record} - 1;
+        var previewRecord = csvData[previewIndex];
+        results.push("");
+        results.push("=== PREVIEW RECORD " + ${preview_record} + " ===");
+        for (var key in previewRecord) {
+          results.push(key + ": " + previewRecord[key]);
+        }
+      }
+      
+    } catch (mainError) {
+      throw new Error("Data merge setup failed: " + mainError.message);
+    }
+    
+    var output = [];
+    output = output.concat(results);
+    
+    if (errors.length > 0) {
+      output.push("");
+      output.push("=== ERRORS ===");
+      output = output.concat(errors);
+    }
+    
+    output.push("");
+    output.push("=== SUMMARY ===");
+    output.push("Records found: " + csvData.length);
+    output.push("Fields mapped: " + fieldMappings.length);
+    output.push("Text frames created: " + textFramesCreated);
+    output.push("Status: " + (errors.length === 0 ? "SUCCESS" : "COMPLETED WITH ERRORS"));
+    
+    output.join("\\\\n");
+  `;
+  
+  const result = await executeExtendScript(script);
+  
+  return {
+    content: [{
+      type: "text" as const,
+      text: result.success ? result.result! : `Error setting up data merge: ${result.error}`
     }]
   };
 }
