@@ -963,7 +963,12 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
     // Get the object style
     var objectStyle = doc.objectStyles.itemByName("${styleName}");
     if (!objectStyle.isValid) {
-      throw new Error("Object style '${styleName}' not found.");
+      // List available styles to help the user
+      var availableStyles = [];
+      for (var st = 0; st < doc.objectStyles.length; st++) {
+        availableStyles.push((st + 1) + ". " + doc.objectStyles[st].name);
+      }
+      throw new Error("Object style '${styleName}' not found.\\n\\nAvailable object styles:\\n" + availableStyles.join("\\n"));
     }
     
     var applied = 0;
@@ -974,6 +979,12 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
     var skippedObjects = [];
     var verboseLogging = ${verbose_logging};
     var isDryRun = ${dry_run};
+    
+    // Add debug header
+    results.push("=== OBJECT STYLE APPLICATION DEBUG ===");
+    results.push("Style: '${styleName}'");
+    results.push("Mode: " + (isDryRun ? "DRY RUN (preview only)" : "APPLY STYLES"));
+    results.push("");
     
     // Helper function to check object type
     function getObjectType(obj) {
@@ -1017,6 +1028,26 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
         if (criteria.layer_names && criteria.layer_names.length > 0) {
           var layerMatches = false;
           var objLayerName = obj.itemLayer ? obj.itemLayer.name : "";
+          
+          // First check if all specified layers exist
+          for (var lc = 0; lc < criteria.layer_names.length; lc++) {
+            var layerExists = false;
+            for (var ld = 0; ld < doc.layers.length; ld++) {
+              if (doc.layers[ld].name === criteria.layer_names[lc]) {
+                layerExists = true;
+                break;
+              }
+            }
+            if (!layerExists) {
+              // Prepare list of available layers for error message
+              var availableLayers = [];
+              for (var la = 0; la < doc.layers.length; la++) {
+                availableLayers.push((la + 1) + ". " + doc.layers[la].name);
+              }
+              throw new Error("Layer '" + criteria.layer_names[lc] + "' not found.\\n\\nAvailable layers:\\n" + availableLayers.join("\\n"));
+            }
+          }
+          
           for (var l = 0; l < criteria.layer_names.length; l++) {
             if (objLayerName === criteria.layer_names[l]) {
               layerMatches = true;
@@ -1119,6 +1150,7 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
       var criteria = ${criteriaJson};
       var targetPages = ${pageRangeJson};
       var pagesToProcess = [];
+      var totalObjectsChecked = 0;
       
       // Build page list
       if (targetPages === "all") {
@@ -1164,11 +1196,15 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
         
       } else if ("${target_selection}" === "all_objects") {
         // Apply to all objects on specified pages
+        results.push("Processing pages: " + (targetPages === "all" ? "all" : targetPages.join(", ")));
+        results.push("");
+        
         for (var p = 0; p < pagesToProcess.length; p++) {
           var page = pagesToProcess[p];
           var pageNum = page.name || (p + 1).toString();
           var allItems = page.allPageItems;
           var pageApplied = 0;
+          var pageErrors = 0;
           var pageTypes = [];
           
           for (var i = 0; i < allItems.length; i++) {
@@ -1195,35 +1231,81 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
                 if (!typeFound) {
                   pageTypes.push({type: itemType, count: 1});
                 }
+                
+                if (verboseLogging) {
+                  detailedLog.push("  ✓ " + itemType + " styled");
+                }
               }
             } catch (e) {
               errors++;
+              pageErrors++;
+              if (verboseLogging) {
+                detailedLog.push("  ✗ Error on " + getObjectType(item) + ": " + e.message);
+              }
             }
           }
           
-          if (verboseLogging && pageApplied > 0) {
+          // Page summary
+          if (pageApplied > 0 || pageErrors > 0 || verboseLogging) {
             var typeStrs = [];
             for (var t = 0; t < pageTypes.length; t++) {
               typeStrs.push(pageTypes[t].count + " " + pageTypes[t].type + "(s)");
             }
-            detailedLog.push("Page " + pageNum + ": Found " + typeStrs.join(", "));
+            
+            if (typeStrs.length > 0) {
+              results.push("Page " + pageNum + ": " + (isDryRun ? "Would apply to " : "Applied to ") + 
+                           typeStrs.join(", "));
+            } else if (allItems.length > 0) {
+              results.push("Page " + pageNum + ": " + allItems.length + " objects found but none support object styles");
+            } else {
+              results.push("Page " + pageNum + ": No objects found");
+            }
+            
+            if (pageErrors > 0) {
+              results.push("  (Errors: " + pageErrors + ")");
+            }
           }
         }
         
+        results.push("");
         results.push((isDryRun ? "Would apply" : "Applied") + " '" + "${styleName}" + "' to " + applied + " objects across " + pagesToProcess.length + " pages");
         
       } else if ("${target_selection}" === "by_criteria") {
         // Apply based on selection criteria
+        results.push("Processing with criteria:");
+        if (criteria.object_type && criteria.object_type.length > 0) {
+          results.push("  • Object types: " + criteria.object_type.join(", "));
+        }
+        if (criteria.layer_names && criteria.layer_names.length > 0) {
+          results.push("  • Layers: " + criteria.layer_names.join(", "));
+        }
+        if (criteria.position_bounds) {
+          results.push("  • Position bounds: x=" + criteria.position_bounds.x_min + "-" + criteria.position_bounds.x_max + 
+                       ", y=" + criteria.position_bounds.y_min + "-" + criteria.position_bounds.y_max);
+        }
+        if (criteria.has_fill !== null && criteria.has_fill !== undefined) {
+          results.push("  • Has fill: " + criteria.has_fill);
+        }
+        if (criteria.has_stroke !== null && criteria.has_stroke !== undefined) {
+          results.push("  • Has stroke: " + criteria.has_stroke);
+        }
+        results.push("");
+        
         for (var p = 0; p < pagesToProcess.length; p++) {
           var page = pagesToProcess[p];
           var pageNum = parseInt(page.name) || (p + 1);
           var allItems = page.allPageItems;
           var pageApplied = 0;
           var pageSkipped = 0;
+          var pageErrors = 0;
+          var pageTypes = {};
+          
+          totalObjectsChecked += allItems.length;
           
           for (var i = 0; i < allItems.length; i++) {
             try {
               var item = allItems[i];
+              var itemType = getObjectType(item);
               
               if (item.hasOwnProperty('appliedObjectStyle')) {
                 if (matchesCriteria(item, criteria, pageNum)) {
@@ -1232,29 +1314,115 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
                   }
                   applied++;
                   pageApplied++;
+                  
+                  // Track applied types
+                  if (!pageTypes[itemType]) {
+                    pageTypes[itemType] = {applied: 0, skipped: 0};
+                  }
+                  pageTypes[itemType].applied++;
+                  
+                  if (verboseLogging) {
+                    detailedLog.push("  ✓ " + itemType + " matched criteria and styled");
+                  }
                 } else {
+                  skipped++;
                   pageSkipped++;
+                  
+                  // Track skipped types
+                  if (!pageTypes[itemType]) {
+                    pageTypes[itemType] = {applied: 0, skipped: 0};
+                  }
+                  pageTypes[itemType].skipped++;
                 }
               }
             } catch (e) {
               errors++;
+              pageErrors++;
+              if (verboseLogging) {
+                detailedLog.push("  ✗ Error on " + getObjectType(item) + ": " + e.message);
+              }
             }
           }
           
-          if (verboseLogging) {
-            detailedLog.push("Page " + pageNum + ": " + (isDryRun ? "Would apply to " : "Applied to ") + pageApplied + " objects (" + pageSkipped + " skipped)");
+          // Page summary with details
+          if (pageApplied > 0 || pageSkipped > 0 || verboseLogging) {
+            var summary = "Page " + pageNum + ": ";
+            
+            if (pageApplied > 0) {
+              summary += (isDryRun ? "Would apply to " : "Applied to ") + pageApplied + " objects";
+            }
+            
+            if (pageSkipped > 0) {
+              summary += (pageApplied > 0 ? ", " : "") + pageSkipped + " skipped";
+            }
+            
+            if (pageErrors > 0) {
+              summary += ", " + pageErrors + " errors";
+            }
+            
+            results.push(summary);
+            
+            // Object breakdown
+            if (verboseLogging && Object.keys(pageTypes).length > 0) {
+              results.push("  Object breakdown:");
+              for (var type in pageTypes) {
+                if (pageTypes.hasOwnProperty(type)) {
+                  var stats = pageTypes[type];
+                  results.push("    • " + type + ": " + stats.applied + " applied, " + stats.skipped + " skipped");
+                }
+              }
+            }
           }
         }
         
+        results.push("");
         results.push((isDryRun ? "Would apply" : "Applied") + " '" + "${styleName}" + "' to " + applied + " objects using criteria");
       }
       
+      results.push("");
+      
+      // Summary statistics
       if (errors > 0) {
-        results.push("Errors encountered: " + errors + " objects could not be processed");
+        results.push("⚠ Errors encountered: " + errors + " objects could not be processed");
       }
       
-      if (skippedObjects.length > 0) {
-        results.push("Skipped objects: " + skippedObjects.length + " objects did not match criteria");
+      if (skipped > 0) {
+        results.push("⚠ Skipped: " + skipped + " objects did not match criteria");
+        
+        // Provide breakdown of skip reasons if available
+        if (skippedObjects.length > 0 && verboseLogging) {
+          var skipReasons = {};
+          for (var sk = 0; sk < skippedObjects.length; sk++) {
+            var reason = skippedObjects[sk].reason;
+            if (!skipReasons[reason]) {
+              skipReasons[reason] = 0;
+            }
+            skipReasons[reason]++;
+          }
+          
+          results.push("  Skip reasons:");
+          for (var reason in skipReasons) {
+            if (skipReasons.hasOwnProperty(reason)) {
+              results.push("    • " + reason + ": " + skipReasons[reason]);
+            }
+          }
+        }
+      }
+      
+      // Troubleshooting hints when nothing was styled
+      if (applied === 0 && errors === 0) {
+        results.push("");
+        results.push("TROUBLESHOOTING:");
+        results.push("• Check if the target objects support object styles");
+        results.push("• Verify page range and layer names are correct");
+        results.push("• For criteria-based selection, ensure criteria match your objects");
+        results.push("• Try using verbose_logging: true for detailed information");
+        results.push("• Consider using target_selection: 'selected' to test on specific objects first");
+        
+        if (totalObjectsChecked > 0) {
+          results.push("");
+          results.push("Note: " + totalObjectsChecked + " objects were checked but none matched criteria or supported object styles");
+        }
       }
       
       // Build final output
@@ -1267,10 +1435,44 @@ async function handleApplyObjectStyle(args: any): Promise<{ content: TextContent
         output = output.concat(detailedLog);
       }
       
+      // Add object breakdown for dry run or verbose mode
+      if ((isDryRun || verboseLogging) && applied > 0) {
+        output.push("");
+        output.push("=== OBJECT BREAKDOWN ===");
+        
+        var overallTypes = {};
+        for (var p = 0; p < pagesToProcess.length; p++) {
+          var page = pagesToProcess[p];
+          var allItems = page.allPageItems;
+          
+          for (var i = 0; i < allItems.length; i++) {
+            try {
+              var item = allItems[i];
+              if (item.hasOwnProperty('appliedObjectStyle')) {
+                var itemType = getObjectType(item);
+                if (!overallTypes[itemType]) {
+                  overallTypes[itemType] = 0;
+                }
+                overallTypes[itemType]++;
+              }
+            } catch(e) {
+              // Skip
+            }
+          }
+        }
+        
+        for (var type in overallTypes) {
+          if (overallTypes.hasOwnProperty(type)) {
+            output.push("• " + type + ": " + overallTypes[type]);
+          }
+        }
+      }
+      
       if (isDryRun) {
         output.push("");
         output.push("=== DRY RUN COMPLETE ===");
         output.push("No changes were made to the document.");
+        output.push("Run with dry_run: false to apply the changes.");
       }
       
     } catch (mainError) {
