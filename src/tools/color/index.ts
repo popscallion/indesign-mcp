@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { JSON2_POLYFILL } from "../../utils/json2-polyfill.js";
 
 /**
  * Color management tools for InDesign
@@ -23,6 +24,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const swatchesJson = swatches ? JSON.stringify(swatches) : "[]";
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -115,20 +118,10 @@ export async function registerColorTools(server: McpServer): Promise<void> {
                     break;
                 }
                 
-                // Create swatch from color
-                var swatch;
-                if (existingSwatch) {
-                  // Update existing
-                  swatch = existingSwatch;
-                  swatch.color = colorObj;
-                } else {
-                  // Create new
-                  swatch = doc.swatches.add();
-                  swatch.name = swatchSpec.name;
-                  swatch.color = colorObj;
-                }
+                // The color creation above automatically creates the swatch
+                // No need to manually create swatch - colors ARE swatches in InDesign
                 
-                results.push((action === "update" ? "Updated" : "Created") + " swatch: " + swatchSpec.name);
+                results.push((action === "update" ? "Updated" : "Created") + " color: " + swatchSpec.name);
                 processed++;
                 
               } else if (action === "delete") {
@@ -200,6 +193,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const schemeName = escapeExtendScriptString(scheme_name);
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -219,35 +214,30 @@ export async function registerColorTools(server: McpServer): Promise<void> {
             var swatch = doc.swatches.itemByName(swatchName);
             
             if (!swatch.isValid) {
-              // Create new swatch
-              swatch = doc.swatches.add();
+              // Create new color (which becomes a swatch automatically)
+              swatch = doc.colors.add();
               swatch.name = swatchName;
             }
             
-            // Determine color model and values
-            var colorObj = doc.colors.add();
-            colorObj.name = swatchName + "_color";
-            
+            // Update swatch properties directly based on color specification
             if (colorSpec.rgb) {
-              colorObj.model = ColorModel.PROCESS;
-              colorObj.space = ColorSpace.RGB;
-              colorObj.colorValue = colorSpec.rgb;
+              swatch.model = ColorModel.PROCESS;
+              swatch.space = ColorSpace.RGB;
+              swatch.colorValue = colorSpec.rgb;
               results.push("✓ " + swatchName + " → RGB[" + colorSpec.rgb.join(", ") + "]");
             } else if (colorSpec.cmyk) {
-              colorObj.model = ColorModel.PROCESS;
-              colorObj.space = ColorSpace.CMYK;
-              colorObj.colorValue = colorSpec.cmyk;
+              swatch.model = ColorModel.PROCESS;
+              swatch.space = ColorSpace.CMYK;
+              swatch.colorValue = colorSpec.cmyk;
               results.push("✓ " + swatchName + " → CMYK[" + colorSpec.cmyk.join(", ") + "]");
             } else if (colorSpec.lab) {
-              colorObj.model = ColorModel.PROCESS;
-              colorObj.space = ColorSpace.LAB;
-              colorObj.colorValue = colorSpec.lab;
+              swatch.model = ColorModel.PROCESS;
+              swatch.space = ColorSpace.LAB;
+              swatch.colorValue = colorSpec.lab;
               results.push("✓ " + swatchName + " → LAB[" + colorSpec.lab.join(", ") + "]");
             } else {
               throw new Error("No valid color specification found");
             }
-            
-            swatch.color = colorObj;
             updated++;
             
           } catch (swatchError) {
@@ -317,6 +307,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const targetsJson = JSON.stringify(targets);
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -387,6 +379,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
                 break;
             }
             
+            results.push("  Debug: Page " + pageNum + " has " + objects.length + " " + target.object_type + " objects");
+            
             // Apply filters and colors
             for (var objIdx = 0; objIdx < objects.length; objIdx++) {
               var obj = objects[objIdx];
@@ -423,17 +417,26 @@ export async function registerColorTools(server: McpServer): Promise<void> {
                 
                 if (shouldApply) {
                   // Apply color
-                  if (target.color_property === "fill") {
-                    obj.fillColor = swatch;
-                  } else if (target.color_property === "stroke") {
-                    obj.strokeColor = swatch;
+                  try {
+                    if (target.color_property === "fill") {
+                      obj.fillColor = swatch;
+                      results.push("    ✓ Applied fill color to " + obj.constructor.name);
+                    } else if (target.color_property === "stroke") {
+                      obj.strokeColor = swatch;
+                      results.push("    ✓ Applied stroke color to " + obj.constructor.name);
+                    }
+                    processed++;
+                  } catch (colorError) {
+                    errors++;
+                    results.push("    ✗ Failed to apply color to " + obj.constructor.name + ": " + colorError.message);
                   }
-                  processed++;
+                } else {
+                  results.push("    - Skipped " + obj.constructor.name + " (filter did not match)");
                 }
                 
               } catch (objError) {
                 errors++;
-                results.push("  Error on page " + pageNum + ": " + objError.message);
+                results.push("  Error processing object on page " + pageNum + ": " + objError.message);
               }
             }
           }
@@ -497,6 +500,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const propsJson = JSON.stringify(properties);
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -553,8 +558,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
           
           // Apply transparency
           if (props.transparency !== undefined) {
-            objectStyle.transparency = props.transparency;
-            results.push("✓ Transparency: " + props.transparency + "%");
+            objectStyle.transparencySettings.blendingSettings.opacity = 100 - props.transparency;
+            results.push("✓ Transparency: " + props.transparency + "% (opacity: " + (100 - props.transparency) + "%)");
           }
           
           JSON.stringify({
@@ -597,6 +602,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const remappingJson = JSON.stringify(color_remapping);
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -719,6 +726,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const stylesJson = JSON.stringify(include_object_styles || []);
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -852,6 +861,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const pagesJson = pages === "all" ? '"all"' : JSON.stringify(pages);
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }
@@ -972,7 +983,7 @@ export async function registerColorTools(server: McpServer): Promise<void> {
               }
               
               if (styleData.transparency !== undefined) {
-                objStyle.transparency = styleData.transparency;
+                objStyle.transparencySettings.blendingSettings.opacity = 100 - styleData.transparency;
               }
               
               stylesCreated++;
@@ -1044,6 +1055,8 @@ export async function registerColorTools(server: McpServer): Promise<void> {
       const description = group_description || "";
 
       const script = `
+        ${JSON2_POLYFILL}
+        
         if (app.documents.length === 0) {
           throw new Error("No documents are open in InDesign. Please open a document first.");
         }

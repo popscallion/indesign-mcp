@@ -4,6 +4,14 @@ import { executeExtendScript, escapeExtendScriptString } from "../../extendscrip
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
 import { withChangeTracking } from "../../utils/changeSummary.js";
 
+// Mock logger to prevent "logger.log is not a function" errors
+const logger = {
+  log: async (message: string, progress?: any) => {
+    // No-op logger - could log to console if debugging needed
+    // console.log(`[${progress?.current || 0}/${progress?.total || 0}] ${message}`);
+  }
+};
+
 export async function registerCompositeTools(server: McpServer): Promise<void> {
   server.tool(
     "auto_flow_text",

@@ -288,9 +288,30 @@ mkcert -version
 mkcert localhost 127.0.0.1  # Test certificate generation
 ```
 
+## Important Gotchas & Known Issues
+
+### ExtendScript Color Management
+- **Colors ARE Swatches**: In InDesign, `doc.colors.add()` automatically creates swatches. Never use `doc.swatches.add()` (doesn't exist).
+- **Transparency Property**: Use `objectStyle.transparencySettings.blendingSettings.opacity = 100 - percentage` instead of `objectStyle.transparency`.
+- **Swatch Updates**: Modify swatch properties directly (`swatch.colorValue = [r,g,b]`) rather than creating intermediate color objects.
+
+### JSON Support
+- **ExtendScript Limitation**: Adobe's ExtendScript lacks native JSON support. All color tools include a JSON2 polyfill automatically.
+- **Manual JSON Construction**: For new tools, either include the JSON2 polyfill or use manual string building with `array.join()`.
+
+### Error Handling Patterns
+- **False Negatives**: Some tools may report errors while actually succeeding (especially color operations). Always verify results in InDesign UI.
+- **Silent Failures**: Add comprehensive debugging with object counts and detailed error messages for bulk operations.
+- **Logger Dependencies**: Composite tools use a mock logger to prevent `logger.log is not a function` errors.
+
+### Testing Best Practices
+- **Document State**: Always test with both empty documents and complex multi-page documents.
+- **Version Compatibility**: Tested with InDesign 2025 v20.5.0.48. Earlier versions may have different API behaviors.
+- **Object Selection**: Use debugging output to verify object selection logic in bulk operations.
+
 ## Status
 
-This project provides comprehensive InDesign automation with 65 production-ready tools across 11 categories. While the project continues to evolve, all core functionality is stable and extensively tested. Some advanced tools may have edge cases with complex documents. Contributions and feedback welcome.
+This project provides comprehensive InDesign automation with 65 production-ready tools across 11 categories. All core functionality is stable and extensively tested. Recent fixes address ExtendScript compatibility issues and improve error reporting. Some advanced tools may have edge cases with complex documents. Contributions and feedback welcome.
 
 ## License
 

@@ -1888,14 +1888,219 @@ function listColorGroups(doc) {
 3. Register: Add to `src/tools/index.ts`
 4. Export types: Update `src/types.ts` if needed
 
+## Critical Gotchas & Debugging Guide
+
+### ExtendScript Color/Swatch Management
+
+#### ❌ **WRONG: Manual Swatch Creation**
+```javascript
+// This DOES NOT WORK - swatches collection has no add() method
+var swatch = doc.swatches.add();  // ERROR: doc.swatches.add is not a function
+swatch.name = "MyColor";
+swatch.color = colorObj;
+```
+
+#### ✅ **CORRECT: Colors ARE Swatches**
+```javascript
+// Colors automatically appear in swatches panel
+var color = doc.colors.add();
+color.name = "MyColor";
+color.model = ColorModel.PROCESS;
+color.space = ColorSpace.RGB;
+color.colorValue = [255, 0, 0];
+// No separate swatch creation needed!
+```
+
+#### ❌ **WRONG: Transparency Property**
+```javascript
+objectStyle.transparency = 50;  // ERROR: Object doesn't support property 'transparency'
+```
+
+#### ✅ **CORRECT: Nested Transparency Settings**
+```javascript
+objectStyle.transparencySettings.blendingSettings.opacity = 50; // 0-100 scale
+```
+
+### JSON Support Issues
+
+#### **Problem**: ExtendScript lacks native JSON
+```javascript
+JSON.stringify(data);  // ERROR: JSON is undefined
+```
+
+#### **Solutions**:
+
+**Option 1: Use JSON2 Polyfill (Recommended)**
+```javascript
+import { JSON2_POLYFILL } from "../../utils/json2-polyfill.js";
+
+const script = `
+  ${JSON2_POLYFILL}
+  
+  // Now JSON.stringify() works
+  var result = JSON.stringify({ success: true });
+`;
+```
+
+**Option 2: Manual String Building**
+```javascript
+// Build JSON-like strings manually
+var results = [];
+results.push('{');
+results.push('"success": true,');
+results.push('"count": ' + processed);
+results.push('}');
+var jsonString = results.join('');
+```
+
+### Error Handling Patterns
+
+#### **False Negatives**: Tools Report Errors But Work
+```javascript
+// Common pattern causing confusion
+try {
+  var color = doc.colors.add();  // This works fine
+  // ... set color properties ...
+  
+  var swatch = doc.swatches.add();  // This line fails
+  // But color was already created and IS a swatch!
+} catch (e) {
+  return { error: e.message };  // Reports failure despite success
+}
+```
+
+**Solution**: Remove redundant swatch creation, test in InDesign UI.
+
+#### **Silent Failures**: Operations Run But Don't Apply
+```javascript
+// Add debugging to bulk operations
+results.push("Debug: Page " + pageNum + " has " + objects.length + " objects");
+
+for (var i = 0; i < objects.length; i++) {
+  try {
+    obj.fillColor = swatch;
+    results.push("✓ Applied to " + obj.constructor.name);
+  } catch (colorError) {
+    results.push("✗ Failed on " + obj.constructor.name + ": " + colorError.message);
+  }
+}
+```
+
+### Logger Dependencies
+
+#### **Problem**: Undefined Logger in Composite Tools
+```javascript
+await logger.log("Starting operation");  // ERROR: logger.log is not a function
+```
+
+#### **Solution**: Mock Logger
+```javascript
+const logger = {
+  log: async (message: string, progress?: any) => {
+    // No-op or console.log if debugging needed
+  }
+};
+```
+
+### API Version Compatibility
+
+#### **InDesign Version Differences**
+- **Tested**: InDesign 2025 v20.5.0.48
+- **Older Versions**: May have different property names or missing features
+- **Solution**: Add version detection and fallbacks:
+
+```javascript
+try {
+  // Try newer API
+  doc.colorGroups.add();
+} catch (e) {
+  // Fall back to older approach
+  createManualColorGroup();
+}
+```
+
+### Debugging Best Practices
+
+#### **Add Comprehensive Logging**
+```javascript
+// Object selection debugging
+results.push("Debug: Found " + page.textFrames.length + " text frames");
+results.push("Debug: Found " + page.rectangles.length + " rectangles");
+
+// Filter debugging  
+if (shouldApply) {
+  results.push("  ✓ Processing " + obj.constructor.name);
+} else {
+  results.push("  - Skipped " + obj.constructor.name + " (filter mismatch)");
+}
+
+// Error context
+catch (e) {
+  results.push("Error in " + toolName + " at step " + currentStep + ": " + e.message);
+}
+```
+
+#### **Test with Multiple Document States**
+1. **Empty Document**: New document with no content
+2. **Simple Content**: Text frames, rectangles, basic shapes
+3. **Complex Document**: Multiple pages, threading, styles, groups
+4. **Edge Cases**: Locked objects, hidden layers, master pages
+
+### Common ExtendScript Gotchas
+
+#### **String Building**
+```javascript
+// ❌ WRONG: Can cause crashes
+var result = "";
+for (var i = 0; i < 1000; i++) {
+  result += "text" + i;  // Avoid += with strings
+}
+
+// ✅ CORRECT: Use array join
+var parts = [];
+for (var i = 0; i < 1000; i++) {
+  parts.push("text" + i);
+}
+var result = parts.join("");
+```
+
+#### **Boolean Values**
+```javascript
+// In TypeScript/JavaScript
+const enabled = true;
+
+// In ExtendScript template
+const script = `
+  var enabled = "${enabled}";  // "true" as string
+  if (enabled === "true") {    // String comparison
+    // Do something
+  }
+`;
+```
+
+#### **Error Object Access**
+```javascript
+// ❌ Might not work in all cases
+catch (error) {
+  console.log(error.message);
+}
+
+// ✅ Safe approach
+catch (error) {
+  var errorMsg = error instanceof Error ? error.message : String(error);
+  console.log(errorMsg);
+}
+```
+
 ## Conclusion
 
 This guide captures hard-won lessons from implementing 65+ InDesign MCP tools across 11 categories. The key to success is:
 
-1. **Understand ExtendScript Limitations**: Work within its constraints
-2. **Provide Robust Fallbacks**: Handle edge cases gracefully  
-3. **Test Incrementally**: Build confidence through systematic testing
-4. **Follow Type Safety**: Prevent runtime errors with proper typing
-5. **Debug Systematically**: Use structured approaches to isolate issues
+1. **Understand ExtendScript Limitations**: Work within its constraints, not against them
+2. **Test False Negatives**: Verify actual results in InDesign UI, don't trust error messages alone
+3. **Add Comprehensive Debugging**: Log object counts, filter matches, and detailed error context
+4. **Use Proper API Patterns**: Colors ARE swatches, transparency has nested structure
+5. **Handle JSON Limitations**: Use polyfills or manual string building
+6. **Provide Robust Fallbacks**: Handle edge cases and version differences gracefully
 
-Remember: ExtendScript is not JavaScript. Respect its limitations and you'll build reliable automation tools.
+**Remember**: ExtendScript is NOT JavaScript. Success comes from respecting its unique characteristics and building tools that work with the platform, not against it.
