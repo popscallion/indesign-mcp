@@ -7,12 +7,12 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerGeometryTools } from "./tools/geometry/index.js";
+import { registerTransformTools } from "./tools/transform/index.js";
+import { registerExportTools } from "./tools/export/index.js";
 // import { registerDataTools } from "./tools/data/index.js";
-// import { registerTransformTools } from "./tools/transform/index.js";
 // import { registerStyleTools } from "./tools/style/index.js";
 // import { registerAnalysisTools } from "./tools/analysis/index.js";
 // import { registerGenerativeTools } from "./tools/generative/index.js";
-// import { registerExportTools } from "./tools/export/index.js";
 
 /**
  * Registers all Illustrator tools with the MCP server
@@ -24,11 +24,12 @@ export async function registerAllIllustratorTools(server: McpServer): Promise<vo
     await registerGeometryTools(server);
     
     // Phase 2: Basic Operations (Depends on foundation)
-    // await registerTransformTools(server);
+    await registerTransformTools(server);
+    await registerExportTools(server);
     // await registerStyleTools(server);
     
     // Phase 3: Intermediate Tools
-    // await registerExportTools(server);
+    // Additional export tools will go here
     
     // Phase 4: Advanced Features
     // await registerDataTools(server);
@@ -57,6 +58,10 @@ export function getIllustratorToolList(): string[] {
     'manage_artboards',
     'create_shape_primitive',
     'read_illustrator_document',
+    // Basic Operations
+    'apply_transformation',
+    'extract_layer_assets',
+    'batch_export_layouts',
     // More tools will be added as implemented...
   ];
 }
