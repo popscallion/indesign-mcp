@@ -1,6 +1,6 @@
 /**
- * @fileoverview ExtendScript execution utilities for InDesign automation
- * Handles communication with Adobe InDesign via AppleScript and temporary JSX files
+ * @fileoverview ExtendScript execution utilities for Adobe Creative Cloud automation
+ * Handles communication with Adobe InDesign and Illustrator via AppleScript and temporary JSX files
  */
 
 import { spawn } from "child_process";
@@ -22,6 +22,23 @@ const INDESIGN_APP_NAMES = [
 ] as const;
 
 /**
+ * List of Illustrator application names to try in order of preference
+ */
+const ILLUSTRATOR_APP_NAMES = [
+  "Adobe Illustrator 2025",
+  "Adobe Illustrator 2024",
+  "Adobe Illustrator 2023",
+  "Adobe Illustrator CC 2024",
+  "Adobe Illustrator CC 2023",
+  "Adobe Illustrator"
+] as const;
+
+/**
+ * Supported Adobe applications
+ */
+export type AdobeApp = 'indesign' | 'illustrator';
+
+/**
  * Default timeout for ExtendScript execution (30 seconds)
  */
 const DEFAULT_TIMEOUT = 30000;
@@ -37,17 +54,37 @@ export async function executeExtendScript(
   script: string, 
   timeout: number = DEFAULT_TIMEOUT
 ): Promise<ExtendScriptResult> {
+  return executeExtendScriptForApp(script, 'indesign', timeout);
+}
+
+/**
+ * Executes ExtendScript code in specified Adobe application via AppleScript
+ * 
+ * @param script - The ExtendScript code to execute
+ * @param app - The Adobe application to target ('indesign' or 'illustrator')
+ * @param timeout - Execution timeout in milliseconds (default: 30000)
+ * @returns Promise resolving to execution result
+ */
+export async function executeExtendScriptForApp(
+  script: string,
+  app: AdobeApp = 'indesign',
+  timeout: number = DEFAULT_TIMEOUT
+): Promise<ExtendScriptResult> {
   let scriptPath: string | null = null;
   
   try {
     // Create temporary script file
-    scriptPath = join(tmpdir(), `indesign_script_${Date.now()}.jsx`);
+    scriptPath = join(tmpdir(), `${app}_script_${Date.now()}.jsx`);
     writeFileSync(scriptPath, script, "utf8");
     
-    // Try each InDesign application name
+    // Get appropriate app names based on target application
+    const appNames = app === 'illustrator' ? ILLUSTRATOR_APP_NAMES : INDESIGN_APP_NAMES;
+    const appDisplayName = app === 'illustrator' ? 'Illustrator' : 'InDesign';
+    
+    // Try each application name
     let lastError: string | undefined;
     
-    for (const appName of INDESIGN_APP_NAMES) {
+    for (const appName of appNames) {
       try {
         const result = await executeAppleScript(appName, scriptPath, timeout);
         
@@ -71,7 +108,7 @@ export async function executeExtendScript(
     
     return {
       success: false,
-      error: lastError ?? "Could not find or connect to any InDesign application. Please ensure InDesign is running."
+      error: lastError ?? `Could not find or connect to any ${appDisplayName} application. Please ensure ${appDisplayName} is running.`
     };
     
   } catch (error) {
@@ -92,9 +129,9 @@ export async function executeExtendScript(
 }
 
 /**
- * Executes AppleScript to run ExtendScript in specific InDesign app
+ * Executes AppleScript to run ExtendScript in specific Adobe app
  * 
- * @param appName - InDesign application name
+ * @param appName - Adobe application name
  * @param scriptPath - Path to temporary JSX file
  * @param timeout - Execution timeout
  * @returns Promise resolving to execution result
