@@ -1,0 +1,13 @@
+{
+  "name": "@mcp/illustrator-server",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@mcp/shared": "workspace:*"
+  }
+}
