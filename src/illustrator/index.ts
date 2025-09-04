@@ -10,7 +10,7 @@ import { registerGeometryTools } from "./tools/geometry/index.js";
 import { registerTransformTools } from "./tools/transform/index.js";
 import { registerExportTools } from "./tools/export/index.js";
 import { registerStyleTools } from "./tools/style/index.js";
-import { registerGenerativeTools } from "./tools/generative/index.js";
+// import { registerGenerativeTools } from "./tools/generative/index.js";
 // import { registerDataTools } from "./tools/data/index.js";
 // import { registerAnalysisTools } from "./tools/analysis/index.js";
 
@@ -27,7 +27,7 @@ export async function registerAllIllustratorTools(server: McpServer): Promise<vo
     await registerTransformTools(server);
     await registerExportTools(server);
     await registerStyleTools(server);
-    await registerGenerativeTools(server);
+    // await registerGenerativeTools(server);
     
     // Phase 3: Intermediate Tools
     // Additional tools will be added here
@@ -51,23 +51,20 @@ export async function registerAllIllustratorTools(server: McpServer): Promise<vo
 export function getIllustratorToolList(): string[] {
   // This will be populated as tools are implemented
   return [
-    // Foundation Layer (6 tools)
+    // Foundation Layer
     'select_elements',
     'measure_relationships',
     'organize_layers',
     'manage_artboards',
     'create_shape_primitive',
     'read_illustrator_document',
-    // Basic Operations (9 tools)
+    // Basic Operations
     'apply_transformation',
     'extract_layer_assets',
     'batch_export_layouts',
-    'create_graphic_style',
     'generate_color_variations',
+    'create_graphic_style',
     'create_text_on_path',
-    'configure_export_presets',
-    'create_grid_layout',
-    'create_pattern_fill',
     // More tools will be added as implemented...
   ];
 }
