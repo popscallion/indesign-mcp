@@ -1,6 +1,6 @@
 # Adobe Creative Suite MCP Server
 
-A production-ready MCP (Model Context Protocol) server for Adobe InDesign and Illustrator automation via ExtendScript. This server provides AI assistants with comprehensive document manipulation capabilities through both traditional stdio transport and modern HTTP/HTTPS endpoints with automatic ngrok tunneling.
+Production-ready MCP (Model Context Protocol) server for Adobe InDesign and Illustrator automation via ExtendScript. Bridges AI assistants with Adobe applications for comprehensive document manipulation.
 
 ## Features
 
@@ -33,16 +33,8 @@ Comprehensive Illustrator automation across 9 categories:
 
 ## Transport Modes
 
-### 1. **Stdio Transport** (Traditional MCP)
-- Standard MCP over stdin/stdout for local client integration
-- Perfect for Claude Desktop, MCP clients, and local development
-
-### 2. **HTTP/HTTPS Transport** (Web Access)  
-- Server-Sent Events (SSE) over HTTP/HTTPS for web clients
-- Native HTTPS support with self-signed certificates
-- Automatic HTTPS tunneling via ngrok for remote access
-- CORS support for browser-based applications
-- Multi-session support with session isolation
+- **Stdio**: Standard MCP over stdin/stdout (Claude Desktop, local clients)
+- **HTTP/HTTPS**: SSE with ngrok tunneling for remote access
 
 ## Requirements
 
