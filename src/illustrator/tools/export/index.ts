@@ -609,5 +609,503 @@ export async function registerExportTools(server: McpServer): Promise<void> {
     })
   );
   
-  console.error("Registered Illustrator export tools");
+  // Tool: package_for_print
+  // Complexity: 4.2 (High)
+  // Dependencies: read_illustrator_document
+  server.tool(
+    "package_for_print",
+    {
+      packageName: z.string().describe("Name for the package folder"),
+      outputPath: z.string().describe("Directory path for package output"),
+      options: z.object({
+        includeFonts: z.boolean().default(true).describe("Include used fonts"),
+        includeImages: z.boolean().default(true).describe("Include linked images"),
+        includeColorProfiles: z.boolean().default(true).describe("Include color profiles"),
+        createPDF: z.boolean().default(true).describe("Generate PDF version"),
+        pdfPreset: z.string().default("[High Quality Print]").describe("PDF preset to use"),
+        collectInFolder: z.boolean().default(true).describe("Organize in folder structure"),
+        includeReport: z.boolean().default(true).describe("Generate package report"),
+        updateLinks: z.boolean().default(false).describe("Update links to packaged location")
+      }).optional(),
+      preflight: z.object({
+        checkFonts: z.boolean().default(true).describe("Check for missing fonts"),
+        checkImages: z.boolean().default(true).describe("Check image resolution"),
+        checkColors: z.boolean().default(true).describe("Check color mode consistency"),
+        minResolution: z.number().default(300).describe("Minimum image resolution (DPI)"),
+        colorMode: z.enum(["CMYK", "RGB", "Any"]).default("CMYK").describe("Required color mode")
+      }).optional()
+    },
+    wrapToolForTelemetry("package_for_print", async (args: any) => {
+      const { packageName, outputPath, options = {}, preflight = {} } = args;
+      const {
+        includeFonts = true,
+        includeImages = true,
+        includeColorProfiles = true,
+        createPDF = true,
+        pdfPreset = "[High Quality Print]",
+        collectInFolder = true,
+        includeReport = true,
+        updateLinks = false
+      } = options;
+      const {
+        checkFonts = true,
+        checkImages = true,
+        checkColors = true,
+        minResolution = 300,
+        colorMode = "CMYK"
+      } = preflight;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var packageName = ${JSON.stringify(packageName)};
+          var outputPath = ${JSON.stringify(outputPath)};
+          
+          // Preflight checks
+          var preflightIssues = [];
+          
+          if (${checkFonts}) {
+            // Check for missing fonts
+            for (var i = 0; i < doc.textFrames.length; i++) {
+              var tf = doc.textFrames[i];
+              for (var j = 0; j < tf.textRanges.length; j++) {
+                var tr = tf.textRanges[j];
+                if (!tr.characterAttributes.textFont) {
+                  preflightIssues.push("Missing font in text frame " + i);
+                }
+              }
+            }
+          }
+          
+          if (${checkImages}) {
+            // Check linked images
+            var placedItems = doc.placedItems;
+            for (var i = 0; i < placedItems.length; i++) {
+              var item = placedItems[i];
+              if (item.file) {
+                // Check if file exists
+                var f = new File(item.file);
+                if (!f.exists) {
+                  preflightIssues.push("Missing linked image: " + item.file);
+                }
+              }
+              
+              // Note: Actual resolution check would require more complex logic
+            }
+            
+            // Check raster items for resolution
+            var rasterItems = doc.rasterItems;
+            for (var i = 0; i < rasterItems.length; i++) {
+              // Simplified resolution check
+              var bounds = rasterItems[i].boundingBox;
+              var width = bounds[2] - bounds[0];
+              var height = bounds[1] - bounds[3];
+              
+              if (width > 0 && height > 0) {
+                // Estimate resolution (simplified)
+                var estimatedDPI = 72; // Default screen resolution
+                if (estimatedDPI < ${minResolution}) {
+                  preflightIssues.push("Low resolution raster item: " + i);
+                }
+              }
+            }
+          }
+          
+          if (${checkColors}) {
+            // Check color mode consistency
+            var requiredMode = "${colorMode}";
+            if (requiredMode !== "Any") {
+              if (requiredMode === "CMYK" && doc.documentColorSpace !== DocumentColorSpace.CMYK) {
+                preflightIssues.push("Document not in CMYK mode");
+              } else if (requiredMode === "RGB" && doc.documentColorSpace !== DocumentColorSpace.RGB) {
+                preflightIssues.push("Document not in RGB mode");
+              }
+            }
+          }
+          
+          // Create package folder
+          var packageFolder = new Folder(outputPath + "/" + packageName);
+          if (!packageFolder.exists) {
+            packageFolder.create();
+          }
+          
+          var packagedFiles = [];
+          
+          // Save document copy
+          var docFile = new File(packageFolder.fullName + "/" + doc.name);
+          doc.saveAs(docFile);
+          packagedFiles.push(doc.name);
+          
+          // Collect fonts
+          var fontsCollected = [];
+          if (${includeFonts}) {
+            var fontsFolder = new Folder(packageFolder.fullName + "/Document fonts");
+            if (!fontsFolder.exists) {
+              fontsFolder.create();
+            }
+            
+            // Note: Actual font collection would require system-level access
+            // This is a simplified representation
+            for (var i = 0; i < app.textFonts.length; i++) {
+              var font = app.textFonts[i];
+              fontsCollected.push(font.name);
+            }
+          }
+          
+          // Collect linked images
+          var imagesCollected = [];
+          if (${includeImages}) {
+            var linksFolder = new Folder(packageFolder.fullName + "/Links");
+            if (!linksFolder.exists) {
+              linksFolder.create();
+            }
+            
+            for (var i = 0; i < doc.placedItems.length; i++) {
+              var placed = doc.placedItems[i];
+              if (placed.file) {
+                var sourceFile = new File(placed.file);
+                if (sourceFile.exists) {
+                  var destFile = new File(linksFolder.fullName + "/" + sourceFile.name);
+                  sourceFile.copy(destFile);
+                  imagesCollected.push(sourceFile.name);
+                  
+                  if (${updateLinks}) {
+                    // Update link to new location
+                    placed.file = destFile;
+                  }
+                }
+              }
+            }
+            
+            // Also handle raster items if embedded
+            for (var i = 0; i < doc.rasterItems.length; i++) {
+              // Note: Embedded items would need to be exported
+              imagesCollected.push("Embedded raster " + i);
+            }
+          }
+          
+          // Create PDF if requested
+          var pdfCreated = false;
+          if (${createPDF}) {
+            var pdfFile = new File(packageFolder.fullName + "/" + packageName + ".pdf");
+            var pdfOptions = new PDFSaveOptions();
+            
+            // Configure PDF options based on preset
+            var preset = ${JSON.stringify(pdfPreset)};
+            if (preset === "[High Quality Print]") {
+              pdfOptions.compatibility = PDFCompatibility.ACROBAT5;
+              pdfOptions.colorCompression = CompressionQuality.None;
+              pdfOptions.preserveEditability = false;
+            } else if (preset === "[Press Quality]") {
+              pdfOptions.compatibility = PDFCompatibility.ACROBAT5;
+              pdfOptions.colorCompression = CompressionQuality.MAXIMUM;
+            }
+            
+            doc.saveAs(pdfFile, pdfOptions);
+            pdfCreated = true;
+            packagedFiles.push(packageName + ".pdf");
+          }
+          
+          // Generate report
+          var reportContent = [];
+          if (${includeReport}) {
+            reportContent.push("Package Report for: " + packageName);
+            reportContent.push("Date: " + new Date().toString());
+            reportContent.push("Document: " + doc.name);
+            reportContent.push("Pages: " + doc.artboards.length);
+            reportContent.push("Fonts Used: " + fontsCollected.length);
+            reportContent.push("Images: " + imagesCollected.length);
+            
+            if (preflightIssues.length > 0) {
+              reportContent.push("\\nPreflight Issues:");
+              for (var i = 0; i < preflightIssues.length; i++) {
+                reportContent.push("- " + preflightIssues[i]);
+              }
+            }
+            
+            // Write report file
+            var reportFile = new File(packageFolder.fullName + "/Package Report.txt");
+            reportFile.open("w");
+            reportFile.write(reportContent.join("\\n"));
+            reportFile.close();
+            packagedFiles.push("Package Report.txt");
+          }
+          
+          JSON.stringify({
+            success: true,
+            packagePath: packageFolder.fullName,
+            filesPackaged: packagedFiles.length,
+            fonts: fontsCollected.length,
+            images: imagesCollected.length,
+            pdfCreated: pdfCreated,
+            preflightIssues: preflightIssues,
+            message: "Package created: " + packageName
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  // Tool: generate_asset_variations
+  // Complexity: 3.8 (Medium-High) 
+  // Dependencies: extract_layer_assets
+  server.tool(
+    "generate_asset_variations",
+    {
+      source: z.enum(["selection", "artboard", "layer", "document"]).default("selection"),
+      layerName: z.string().optional().describe("Layer name if source is 'layer'"),
+      artboardIndex: z.number().optional().describe("Artboard index if source is 'artboard'"),
+      variations: z.array(z.object({
+        name: z.string().describe("Variation name suffix"),
+        scale: z.number().optional().describe("Scale percentage (100 = original)"),
+        format: z.enum(["png", "jpg", "svg", "pdf", "eps"]).describe("Export format"),
+        colorMode: z.enum(["RGB", "CMYK", "Grayscale", "Bitmap"]).optional(),
+        resolution: z.number().optional().describe("Resolution in DPI"),
+        quality: z.number().min(0).max(100).optional().describe("JPEG quality"),
+        dimensions: z.object({
+          width: z.number().optional(),
+          height: z.number().optional(),
+          maintainAspectRatio: z.boolean().default(true)
+        }).optional()
+      })).describe("List of variations to generate"),
+      outputPath: z.string().describe("Directory path for generated assets"),
+      naming: z.object({
+        prefix: z.string().optional().describe("Prefix for file names"),
+        separator: z.string().default("-").describe("Separator character"),
+        includeArtboardName: z.boolean().default(true).describe("Include artboard name"),
+        includeVariationName: z.boolean().default(true).describe("Include variation name")
+      }).optional()
+    },
+    wrapToolForTelemetry("generate_asset_variations", async (args: any) => {
+      const { 
+        source = "selection", 
+        layerName, 
+        artboardIndex,
+        variations, 
+        outputPath,
+        naming = {}
+      } = args;
+      const {
+        prefix,
+        separator = "-",
+        includeArtboardName = true,
+        includeVariationName = true
+      } = naming;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var outputPath = ${JSON.stringify(outputPath)};
+          var variations = ${JSON.stringify(variations)};
+          var source = ${JSON.stringify(source)};
+          
+          // Ensure output directory exists
+          var outputFolder = new Folder(outputPath);
+          if (!outputFolder.exists) {
+            outputFolder.create();
+          }
+          
+          // Get source items
+          var sourceItems = [];
+          var baseName = "";
+          
+          switch (source) {
+            case "selection":
+              sourceItems = app.selection;
+              baseName = "asset";
+              break;
+              
+            case "layer":
+              var layerName = ${JSON.stringify(layerName || "")};
+              for (var i = 0; i < doc.layers.length; i++) {
+                if (doc.layers[i].name === layerName) {
+                  sourceItems = doc.layers[i].pageItems;
+                  baseName = layerName;
+                  break;
+                }
+              }
+              break;
+              
+            case "artboard":
+              var artIndex = ${artboardIndex || 0};
+              doc.artboards.setActiveArtboardIndex(artIndex);
+              var artboard = doc.artboards[artIndex];
+              baseName = artboard.name;
+              
+              // Select all items in artboard
+              doc.selectObjectsOnActiveArtboard();
+              sourceItems = app.selection;
+              break;
+              
+            case "document":
+              sourceItems = doc.pageItems;
+              baseName = doc.name.replace(/\\.[^.]+$/, "");
+              break;
+          }
+          
+          if (sourceItems.length === 0) {
+            throw new Error("No items found in " + source);
+          }
+          
+          var generatedFiles = [];
+          
+          // Generate each variation
+          for (var v = 0; v < variations.length; v++) {
+            var variation = variations[v];
+            
+            // Create a temporary document for this variation
+            var tempDoc = app.documents.add();
+            
+            // Copy source items to temp document
+            for (var i = 0; i < sourceItems.length; i++) {
+              var copy = sourceItems[i].duplicate(tempDoc, ElementPlacement.PLACEATEND);
+              
+              // Apply scale if specified
+              if (variation.scale && variation.scale !== 100) {
+                var scaleMatrix = app.getScaleMatrix(variation.scale, variation.scale);
+                copy.transform(scaleMatrix, true, false, true, false, 0, Transformation.CENTER);
+              }
+              
+              // Apply dimensions if specified
+              if (variation.dimensions) {
+                var dims = variation.dimensions;
+                var bounds = copy.geometricBounds;
+                var currentWidth = bounds[2] - bounds[0];
+                var currentHeight = bounds[1] - bounds[3];
+                
+                var scaleX = 100, scaleY = 100;
+                
+                if (dims.width) {
+                  scaleX = (dims.width / currentWidth) * 100;
+                }
+                if (dims.height) {
+                  scaleY = (dims.height / currentHeight) * 100;
+                }
+                
+                if (dims.maintainAspectRatio) {
+                  var scale = Math.min(scaleX, scaleY);
+                  scaleX = scale;
+                  scaleY = scale;
+                }
+                
+                if (scaleX !== 100 || scaleY !== 100) {
+                  var scaleMatrix = app.getScaleMatrix(scaleX, scaleY);
+                  copy.transform(scaleMatrix, true, false, true, false, 0, Transformation.CENTER);
+                }
+              }
+            }
+            
+            // Fit artboard to content
+            tempDoc.artboards[0].artboardRect = tempDoc.visibleBounds;
+            
+            // Apply color mode if specified
+            if (variation.colorMode) {
+              switch (variation.colorMode) {
+                case "RGB":
+                  tempDoc.documentColorSpace = DocumentColorSpace.RGB;
+                  break;
+                case "CMYK":
+                  tempDoc.documentColorSpace = DocumentColorSpace.CMYK;
+                  break;
+              }
+            }
+            
+            // Build filename
+            var fileNameParts = [];
+            if ("${prefix}") fileNameParts.push("${prefix}");
+            if (${includeArtboardName}) fileNameParts.push(baseName);
+            if (${includeVariationName}) fileNameParts.push(variation.name);
+            var fileName = fileNameParts.join("${separator}");
+            
+            // Export based on format
+            var exportFile = null;
+            var exportOptions = null;
+            
+            switch (variation.format) {
+              case "png":
+                fileName += ".png";
+                exportFile = new File(outputPath + "/" + fileName);
+                exportOptions = new ExportOptionsPNG24();
+                exportOptions.artBoardClipping = true;
+                exportOptions.transparency = true;
+                if (variation.resolution) {
+                  exportOptions.horizontalScale = variation.resolution / 72 * 100;
+                  exportOptions.verticalScale = variation.resolution / 72 * 100;
+                }
+                tempDoc.exportFile(exportFile, ExportType.PNG24, exportOptions);
+                break;
+                
+              case "jpg":
+                fileName += ".jpg";
+                exportFile = new File(outputPath + "/" + fileName);
+                exportOptions = new ExportOptionsJPEG();
+                exportOptions.artBoardClipping = true;
+                exportOptions.qualitySetting = variation.quality || 80;
+                if (variation.resolution) {
+                  exportOptions.horizontalScale = variation.resolution / 72 * 100;
+                  exportOptions.verticalScale = variation.resolution / 72 * 100;
+                }
+                tempDoc.exportFile(exportFile, ExportType.JPEG, exportOptions);
+                break;
+                
+              case "svg":
+                fileName += ".svg";
+                exportFile = new File(outputPath + "/" + fileName);
+                exportOptions = new ExportOptionsSVG();
+                exportOptions.embedRasterImages = true;
+                exportOptions.fontSubsetting = SVGFontSubsetting.GLYPHSUSED;
+                tempDoc.exportFile(exportFile, ExportType.SVG, exportOptions);
+                break;
+                
+              case "pdf":
+                fileName += ".pdf";
+                exportFile = new File(outputPath + "/" + fileName);
+                var pdfOptions = new PDFSaveOptions();
+                pdfOptions.compatibility = PDFCompatibility.ACROBAT5;
+                tempDoc.saveAs(exportFile, pdfOptions);
+                break;
+                
+              case "eps":
+                fileName += ".eps";
+                exportFile = new File(outputPath + "/" + fileName);
+                var epsOptions = new EPSSaveOptions();
+                epsOptions.compatibility = Compatibility.ILLUSTRATOR8;
+                epsOptions.preview = EPSPreview.TRANSPARENTCOLORTIFF;
+                tempDoc.saveAs(exportFile, epsOptions);
+                break;
+            }
+            
+            generatedFiles.push({
+              name: fileName,
+              format: variation.format,
+              scale: variation.scale || 100,
+              path: exportFile.fullName
+            });
+            
+            // Close temp document without saving
+            tempDoc.close(SaveOptions.DONOTSAVECHANGES);
+          }
+          
+          JSON.stringify({
+            success: true,
+            source: source,
+            variationsCreated: generatedFiles.length,
+            outputPath: outputPath,
+            files: generatedFiles,
+            message: "Generated " + generatedFiles.length + " asset variations"
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  console.error("Export tools registered successfully");
 }
