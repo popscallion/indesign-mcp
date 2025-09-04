@@ -31,7 +31,7 @@ export { getMcpBridge, McpBridge } from './mcpBridge.js';
 
 // Legacy sub-agent executor (deprecated)
 export { SubAgentExecutor, createSubAgentExecutor } from './subAgentExecutor.js';
-export { TelemetryPersistence } from "../../telemetry.jsPersistence.js';
+export { TelemetryPersistence } from "../../telemetryPersistence.js";
 export { StatisticalAnalysis } from './statisticalAnalysis.js';
 
 // Configuration

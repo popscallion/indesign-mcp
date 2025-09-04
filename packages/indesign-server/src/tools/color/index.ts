@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import { JSON2_POLYFILL } from "../../utils/json2-polyfill.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
+import { JSON2_POLYFILL } from "@mcp/shared/utils/json2-polyfill.js";
 
 /**
  * Color management tools for InDesign

@@ -4,7 +4,10 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { createInDesignMcpServer } from '../../index.js';
+// TODO: This should import from @mcp/indesign-server when available
+// import { createInDesignMcpServer } from '@mcp/indesign-server';
+// Temporary workaround - will be fixed when we properly separate concerns
+const createInDesignMcpServer = null as any;
 import { LayoutMetrics, ComparisonResult } from '../../types.js';
 import { executeExtendScript } from '../../extendscript.js';
 import * as os from 'os';
@@ -28,12 +31,12 @@ export class McpBridge {
     this.telemetryEnabled = enableTelemetry;
     
     // CRITICAL: Set telemetry BEFORE creating server
-    const { setTelemetryEnabled } = await import('../../tools/index.js');
+    const { setTelemetryEnabled } = await import('../../telemetryFlag.js');
     setTelemetryEnabled(enableTelemetry);
     
     // Initialize telemetry directory early
     if (enableTelemetry) {
-      const { TelemetryCapture } = await import('../../tools/telemetry.js');
+      const { TelemetryCapture } = await import('../../telemetry.js');
       await TelemetryCapture.initializeTelemetryDir();
     }
     
@@ -207,7 +210,9 @@ export class McpBridge {
   async extractLayoutMetrics(pageNumber: number = -1): Promise<LayoutMetrics> {
     // We need to get the raw metrics data, not the formatted output
     // Let's use the ExtendScript template directly
-    const { generateVisualAttributesExtraction } = await import('../../tools/analysis/extendscript-templates.js');
+    // TODO: This should import from @mcp/indesign-server when available
+    // const { generateVisualAttributesExtraction } = await import('@mcp/indesign-server/tools/analysis/extendscript-templates.js');
+    const generateVisualAttributesExtraction = null as any;
     const script = generateVisualAttributesExtraction(pageNumber, true, true);
     
     // Debug: Log the generated script

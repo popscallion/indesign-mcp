@@ -4,7 +4,10 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { createInDesignMcpServer, SERVER_CONFIG } from './index.js';
+// TODO: This should import from @mcp/indesign-server when available
+// import { createInDesignMcpServer, SERVER_CONFIG } from '@mcp/indesign-server';
+const createInDesignMcpServer = null as any;
+const SERVER_CONFIG = { name: 'indesign-mcp', version: '1.0.0' };
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { spawn } from 'child_process';
 import { URL } from 'url';

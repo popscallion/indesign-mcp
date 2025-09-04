@@ -6,10 +6,10 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
 import { z } from "zod";
-import { toPoints } from "../../utils/coords.js";
-import { withChangeTracking } from "../../utils/changeSummary.js";
+import { toPoints } from "@mcp/shared/utils/coords.js";
+import { withChangeTracking } from "@mcp/shared/utils/changeSummary.js";
 
 /**
  * Document state cache for prerequisite tracking

@@ -5,9 +5,9 @@
 
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScript } from "../../extendscript.js";
-import type { DecisionCheckpoint, LayoutMetrics, ComparisonResult } from "../../types.js";
-import { generateVisualAttributesExtraction } from "@mcp/shared/extendscript.js-templates.js";
+import { executeExtendScript } from "@mcp/shared/extendscript.js";
+import type { DecisionCheckpoint, LayoutMetrics, ComparisonResult } from "@mcp/shared/types.js";
+import { generateVisualAttributesExtraction } from "./extendscript-templates.js";
 
 // In-memory storage for decision checkpoints
 const decisionLog: DecisionCheckpoint[] = [];

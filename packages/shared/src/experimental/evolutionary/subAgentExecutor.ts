@@ -8,10 +8,12 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import { createInDesignMcpServer } from '../../index.js';
+// TODO: This should import from @mcp/indesign-server when available
+// import { createInDesignMcpServer } from '@mcp/indesign-server';
+const createInDesignMcpServer = null as any;
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { TelemetryCapture, TelemetrySession } from "../../telemetry.js.js';
+import { TelemetryCapture, TelemetrySession } from "../../telemetry.js";
 
 /**
  * Sub-agent configuration
@@ -125,6 +127,10 @@ export class SubAgentExecutor extends EventEmitter {
     
     // Create telemetry-enabled server programmatically
     this.mcpServer = await createInDesignMcpServer(true);
+    
+    if (!this.mcpServer) {
+      throw new Error('Failed to create MCP server - createInDesignMcpServer not available in shared package');
+    }
     
     // Note: Telemetry session is already started in execute() method
     

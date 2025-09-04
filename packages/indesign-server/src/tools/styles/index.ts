@@ -5,8 +5,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { TextAlignment, FontStyle, SelectionType } from "../../types.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
+import type { TextAlignment, FontStyle, SelectionType } from "@mcp/shared/types.js";
 import { z } from "zod";
 import { markFontsChecked } from "../layout/index.js";
 

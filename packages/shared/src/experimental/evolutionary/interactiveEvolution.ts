@@ -16,7 +16,7 @@ import { ToolModifier } from './toolModifier.js';
 import { GitManager } from './gitManager.js';
 import { loadReferenceMetrics, getReferenceImagePath } from './metricsLoader.js';
 import { TestConfig, TestRun, GenerationResult, Improvement, Pattern } from './types.js';
-import { TelemetryCapture } from "../../telemetry.js.js';
+import { TelemetryCapture } from "../../telemetry.js";
 
 /**
  * State that can be persisted between sessions

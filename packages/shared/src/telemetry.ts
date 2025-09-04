@@ -5,7 +5,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { getConfig } from '../experimental/evolutionary/config.js';
+import { getConfig } from './experimental/evolutionary/config.js';
 
 /**
  * Tool call telemetry data structure
@@ -95,6 +95,9 @@ export class TelemetryCapture {
     }
     
     // Ensure directory exists and is writable
+    if (!this.telemetryDir) {
+      throw new Error('Telemetry directory not initialized');
+    }
     await fs.mkdir(this.telemetryDir, { recursive: true });
     await fs.access(this.telemetryDir, fs.constants.W_OK);
     console.log(`📊 Telemetry directory initialized: ${this.telemetryDir}`);

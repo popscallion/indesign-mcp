@@ -6,8 +6,8 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
-import { TelemetryCapture, TelemetrySession } from "../../telemetry.js.js';
-import { TelemetryPersistence } from "../../telemetry.jsPersistence.js';
+import { TelemetryCapture, TelemetrySession } from "../../telemetry.js";
+import { TelemetryPersistence } from "../../telemetryPersistence.js";
 import { LayoutMetrics, ComparisonResult } from '../../types.js';
 import { getMcpBridge, McpBridge } from './mcpBridge.js';
 import { TestConfig, TestRun, GenerationResult } from './types.js';
@@ -42,7 +42,7 @@ export class TaskBasedRunner {
     
     // Pre-enable telemetry for evolution tests
     console.log('📊 Pre-enabling telemetry for evolutionary testing...');
-    const { setTelemetryEnabled } = await import('../../tools/telemetryFlag.js');
+    const { setTelemetryEnabled } = await import('../../telemetryFlag.js');
     setTelemetryEnabled(true);
     console.log('📊 Telemetry pre-enabled for evolution context');
     
@@ -74,8 +74,8 @@ export class TaskBasedRunner {
    */
   async validateTelemetryHealth(): Promise<{ healthy: boolean; issues: string[] }> {
     const issues: string[] = [];
-    const { isTelemetryEnabled } = await import('../../tools/telemetryFlag.js');
-    const { TelemetryCapture } = await import('../../tools/telemetry.js');
+    const { isTelemetryEnabled } = await import('../../telemetryFlag.js');
+    const { TelemetryCapture } = await import('../../telemetry.js');
     
     // Check telemetry flag
     if (!isTelemetryEnabled()) {
@@ -221,7 +221,7 @@ export class TaskBasedRunner {
     console.log(`\nCollecting telemetry for ${agentId} (Session: ${sessionId})...`);
     
     // Wait for session completion sentinel
-    const { TelemetryCapture } = await import('../../tools/telemetry.js');
+    const { TelemetryCapture } = await import('../../telemetry.js');
     const timeout = this.config.timing.telemetryWaitTimeoutMs;
     const completed = await TelemetryCapture.waitForSessionComplete(sessionId, timeout);
     
@@ -238,7 +238,7 @@ export class TaskBasedRunner {
       console.log('📊 Creating enhanced fallback telemetry from document state...');
       
       // Check if telemetry was ever enabled
-      const { isTelemetryEnabled } = await import('../../tools/telemetryFlag.js');
+      const { isTelemetryEnabled } = await import('../../telemetryFlag.js');
       const wasEnabled = isTelemetryEnabled();
       console.log(`📊 Telemetry enabled status: ${wasEnabled}`);
       

@@ -5,10 +5,10 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { PageLocation } from "../../types.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
+import type { PageLocation } from "@mcp/shared/types.js";
 import { z } from "zod";
-import { captureSnapshot, logChangeSummary } from "../../utils/changeSummary.js";
+import { captureSnapshot, logChangeSummary } from "@mcp/shared/utils/changeSummary.js";
 
 /**
  * Registers page management tools with the MCP server

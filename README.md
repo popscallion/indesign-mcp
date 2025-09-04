@@ -44,21 +44,38 @@ Comprehensive Illustrator automation across 9 categories:
 - **ngrok** (optional, for tunneling): `brew install ngrok`
 - **OpenSSL** (optional, for HTTPS certificates): `brew install openssl`
 
+## Project Structure
+
+This project uses a **pnpm monorepo** structure for better code organization:
+
+```
+packages/
+├── shared/              # Shared utilities, telemetry, ExtendScript bridge
+├── indesign-server/     # InDesign-specific tools and server
+└── illustrator-server/  # Illustrator-specific tools and server
+```
+
 ## Quick Start
 
 ### Installation
 ```bash
-npm install
-npm run build
+# Install pnpm if you haven't already
+npm install -g pnpm
+
+# Install all dependencies
+pnpm install
+
+# Build all packages
+pnpm run build
 ```
 
 ### Stdio Mode (Traditional MCP)
 ```bash
-# Run in InDesign mode (default)
-npm start
+# Run InDesign server
+pnpm --filter indesign-server start
 
-# Run in Illustrator mode
-MCP_APP_MODE=illustrator npm start
+# Run Illustrator server
+pnpm --filter illustrator-server start
 ```
 
 ### HTTP/HTTPS Mode (Web Access)

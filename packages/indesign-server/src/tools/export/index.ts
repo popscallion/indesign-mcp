@@ -5,8 +5,8 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { ExportFormat, ExportQuality } from "../../types.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
+import type { ExportFormat, ExportQuality } from "@mcp/shared/types.js";
 import { updatePageDimensionsCache } from "../layout/index.js";
 import { z } from "zod";
 import { promises as fs } from "fs";

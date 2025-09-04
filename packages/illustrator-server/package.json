@@ -13,6 +13,10 @@
   "dependencies": {
     "@mcp/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "tsx": "^4.19.4"
+    "tsx": "^4.19.4",
+    "zod": "^3.25.57"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.1"
   }
 }

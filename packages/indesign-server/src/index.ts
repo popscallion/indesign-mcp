@@ -5,7 +5,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAllInDesignTools } from "./tools/index.js";
-import { createTelemetryServer, setTelemetryEnabled } from "@mcp/shared/telemetryServer.js";
+import { createTelemetryServer } from "@mcp/shared/telemetryServer.js";
+import { setTelemetryEnabled } from "@mcp/shared/telemetryFlag.js";
 import { TelemetryCapture } from "@mcp/shared/telemetry.js";
 
 /**

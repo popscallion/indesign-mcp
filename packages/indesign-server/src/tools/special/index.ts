@@ -6,9 +6,9 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
 import { markInDesignStatusChecked } from "../layout/index.js";
-import type { SpecialCharacterType, LayerAction, LayerColor, TextPosition } from "../../types.js";
+import type { SpecialCharacterType, LayerAction, LayerColor, TextPosition } from "@mcp/shared/types.js";
 
 /**
  * Registers special features tools with the MCP server

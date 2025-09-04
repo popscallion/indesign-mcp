@@ -6,8 +6,8 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { FrameScope, TextFlowAction } from "../../types.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
+import type { FrameScope, TextFlowAction } from "@mcp/shared/types.js";
 
 /**
  * Registers advanced utility tools with the MCP server
@@ -19,8 +19,8 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     {},
     async () => {
       try {
-        const { TelemetryCapture } = await import('../telemetry.js');
-        const { isTelemetryEnabled } = await import('../telemetryFlag.js');
+        const { TelemetryCapture } = await import('@mcp/shared/telemetry.js');
+        const { isTelemetryEnabled } = await import('@mcp/shared/telemetryFlag.js');
         
         // Detailed diagnostics before ending session
         console.log('📊 Telemetry End Session Diagnostics:');
@@ -82,8 +82,8 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
       
       // CRITICAL: Also flip the in-memory telemetry flag when enabling telemetry
       if (args.name === 'TELEMETRY_ENABLED' && args.value === 'true') {
-        const { setTelemetryEnabled } = await import('../telemetryFlag.js');
-        const { TelemetryCapture } = await import('../telemetry.js');
+        const { setTelemetryEnabled } = await import('@mcp/shared/telemetryFlag.js');
+        const { TelemetryCapture } = await import('@mcp/shared/telemetry.js');
         
         // Enable telemetry system
         setTelemetryEnabled(true);

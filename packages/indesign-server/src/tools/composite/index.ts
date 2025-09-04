@@ -1,8 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
 import { TextContent } from "@modelcontextprotocol/sdk/types.js";
-import { withChangeTracking } from "../../utils/changeSummary.js";
+import { withChangeTracking } from "@mcp/shared/utils/changeSummary.js";
 
 // Mock logger to prevent "logger.log is not a function" errors
 const logger = {

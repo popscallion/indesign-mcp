@@ -4,7 +4,7 @@
  */
 
 import { Pattern, PatternExample, DeviationPattern, TestRun } from './types.js';
-import { TelemetrySession } from "../../telemetry.js.js';
+import { TelemetrySession } from "../../telemetry.js";
 
 /**
  * Analyzes patterns across multiple test runs to identify systematic issues

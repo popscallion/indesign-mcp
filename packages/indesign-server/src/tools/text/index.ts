@@ -4,10 +4,10 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScript, escapeExtendScriptString } from "../../extendscript.js";
-import type { TextPosition } from "../../types.js";
+import { executeExtendScript, escapeExtendScriptString } from "@mcp/shared/extendscript.js";
+import type { TextPosition } from "@mcp/shared/types.js";
 import { z } from "zod";
-import { withChangeTracking } from "../../utils/changeSummary.js";
+import { withChangeTracking } from "@mcp/shared/utils/changeSummary.js";
 
 /**
  * Registers all text manipulation tools with the MCP server

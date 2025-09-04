@@ -6,8 +6,8 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { executeExtendScriptForApp } from "../../../extendscript.js";
-import { wrapToolForTelemetry } from "../../../tools/index.js";
+import { executeExtendScriptForApp } from "@mcp/shared/extendscript.js";
+import { wrapToolForTelemetry } from "@mcp/shared/telemetryWrapper.js";
 import { z } from "zod";
 
 /**
