@@ -5,21 +5,13 @@
  * Demonstrates text on path, envelope distortion, warping, and advanced text effects
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-export interface TypographyConfig {
-  effectType: "vintage" | "modern" | "grunge" | "neon" | "3d";
-  fontSize: number;
-  fontFamily: string;
-  primaryColor: { r: number; g: number; b: number };
-  secondaryColor?: { r: number; g: number; b: number };
-}
+import { MockMcpServer, TypographyConfig } from "./types.js";
 
 /**
  * Workflow: Create vintage typography poster
  */
 export async function createVintageTypography(
-  server: McpServer,
+  server: MockMcpServer,
   config: TypographyConfig = {
     effectType: "vintage",
     fontSize: 72,
@@ -150,7 +142,7 @@ export async function createVintageTypography(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -159,7 +151,7 @@ export async function createVintageTypography(
  * Workflow: Create neon text effect
  */
 export async function createNeonText(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -265,7 +257,7 @@ export async function createNeonText(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -274,7 +266,7 @@ export async function createNeonText(
  * Workflow: Create 3D text effect
  */
 export async function create3DText(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -368,7 +360,7 @@ export async function create3DText(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -377,7 +369,7 @@ export async function create3DText(
  * Workflow: Create kinetic typography animation frames
  */
 export async function createKineticTypography(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -454,7 +446,7 @@ export async function createKineticTypography(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }

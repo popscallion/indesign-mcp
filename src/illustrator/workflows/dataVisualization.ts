@@ -5,29 +5,13 @@
  * Demonstrates CSV import, data merge, and creating charts with shapes
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-export interface ChartConfig {
-  chartType: "bar" | "pie" | "line" | "scatter" | "bubble";
-  width: number;
-  height: number;
-  colorScheme: "sequential" | "diverging" | "categorical";
-  showLabels: boolean;
-  showLegend: boolean;
-}
-
-export interface DataPoint {
-  label: string;
-  value: number;
-  category?: string;
-  size?: number;
-}
+import { MockMcpServer, ChartConfig, DataPoint } from "./types.js";
 
 /**
  * Workflow: Create bar chart from CSV data
  */
 export async function createBarChart(
-  server: McpServer,
+  server: MockMcpServer,
   data: DataPoint[] = [
     { label: "Q1", value: 45 },
     { label: "Q2", value: 62 },
@@ -150,7 +134,7 @@ export async function createBarChart(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -159,7 +143,7 @@ export async function createBarChart(
  * Workflow: Create pie chart visualization
  */
 export async function createPieChart(
-  server: McpServer,
+  server: MockMcpServer,
   data: DataPoint[] = [
     { label: "Product A", value: 35, category: "Electronics" },
     { label: "Product B", value: 25, category: "Clothing" },
@@ -282,7 +266,7 @@ export async function createPieChart(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -291,7 +275,7 @@ export async function createPieChart(
  * Workflow: Create data-driven infographic
  */
 export async function createInfographic(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -404,7 +388,7 @@ export async function createInfographic(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }

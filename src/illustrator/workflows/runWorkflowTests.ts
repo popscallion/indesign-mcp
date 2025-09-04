@@ -22,6 +22,7 @@ import {
   exportWorkflowDocumentation,
   WORKFLOW_CATEGORIES
 } from "./index.js";
+import { MockMcpServer } from "./types.js";
 
 // Parse command line arguments
 function parseArgs(): {
@@ -83,7 +84,7 @@ Examples:
 }
 
 // Create a mock MCP server for testing
-function createMockServer(): McpServer {
+function createMockServer(): MockMcpServer {
   const server = new McpServer({
     name: "illustrator-workflow-test",
     version: "1.0.0"
@@ -92,7 +93,7 @@ function createMockServer(): McpServer {
   });
   
   // Mock the callTool method for testing
-  (server as any).callTool = async (toolName: string, args: any) => {
+  (server as MockMcpServer).callTool = async (toolName: string, args: any) => {
     console.log(`  → Calling tool: ${toolName}`);
     
     // Simulate successful tool execution
@@ -107,7 +108,7 @@ function createMockServer(): McpServer {
     };
   };
   
-  return server;
+  return server as MockMcpServer;
 }
 
 // Main execution

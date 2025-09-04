@@ -6,20 +6,13 @@
  * to recreate a professional logo design
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-export interface LogoWorkflowConfig {
-  targetWidth: number;
-  targetHeight: number;
-  colorScheme: "monochrome" | "complementary" | "triadic" | "custom";
-  style: "flat" | "gradient" | "3d" | "outline";
-}
+import { MockMcpServer, LogoWorkflowConfig } from "./types.js";
 
 /**
  * Workflow: Create a tech company logo with geometric shapes
  */
 export async function createTechLogo(
-  server: McpServer,
+  server: MockMcpServer,
   config: LogoWorkflowConfig = {
     targetWidth: 200,
     targetHeight: 200,
@@ -123,7 +116,7 @@ export async function createTechLogo(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -132,7 +125,7 @@ export async function createTechLogo(
  * Workflow: Create a minimalist logo with text on path
  */
 export async function createMinimalistLogo(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -186,7 +179,7 @@ export async function createMinimalistLogo(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -195,7 +188,7 @@ export async function createMinimalistLogo(
  * Workflow: Create a complex logo with symbols
  */
 export async function createSymbolBasedLogo(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -261,7 +254,7 @@ export async function createSymbolBasedLogo(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }

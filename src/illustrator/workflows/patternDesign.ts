@@ -5,20 +5,13 @@
  * Demonstrates procedural pattern generation, color harmonies, and swatch management
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-export interface PatternWorkflowConfig {
-  patternType: "geometric" | "organic" | "abstract" | "textile";
-  colorCount: number;
-  tileSize: number;
-  complexity: "simple" | "moderate" | "complex";
-}
+import { MockMcpServer, PatternWorkflowConfig } from "./types.js";
 
 /**
  * Workflow: Create geometric repeating pattern
  */
 export async function createGeometricPattern(
-  server: McpServer,
+  server: MockMcpServer,
   config: PatternWorkflowConfig = {
     patternType: "geometric",
     colorCount: 4,
@@ -109,7 +102,7 @@ export async function createGeometricPattern(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -118,7 +111,7 @@ export async function createGeometricPattern(
  * Workflow: Create procedural organic pattern
  */
 export async function createOrganicPattern(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -191,7 +184,7 @@ export async function createOrganicPattern(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -200,7 +193,7 @@ export async function createOrganicPattern(
  * Workflow: Create complex textile pattern
  */
 export async function createTextilePattern(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -290,7 +283,7 @@ export async function createTextilePattern(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }
@@ -299,7 +292,7 @@ export async function createTextilePattern(
  * Workflow: Create abstract artistic pattern
  */
 export async function createAbstractPattern(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<{ success: boolean; steps: string[] }> {
   const steps: string[] = [];
   
@@ -381,7 +374,7 @@ export async function createAbstractPattern(
     return { success: true, steps };
     
   } catch (error) {
-    steps.push(`Error: ${error.message}`);
+    steps.push(`Error: ${error instanceof Error ? error.message : String(error)}`);
     return { success: false, steps };
   }
 }

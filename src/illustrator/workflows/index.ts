@@ -5,7 +5,7 @@
  * Central registry and runner for all Illustrator MCP workflow tests
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { MockMcpServer, WorkflowResult, WorkflowMetadata, WorkflowCategories } from "./types.js";
 
 // Import all workflow modules
 import {
@@ -37,7 +37,7 @@ import {
 /**
  * Workflow metadata for categorization and testing
  */
-export const WORKFLOW_CATEGORIES = {
+export const WORKFLOW_CATEGORIES: WorkflowCategories = {
   "Logo Design": [
     {
       name: "Tech Company Logo",
@@ -146,34 +146,24 @@ export const WORKFLOW_CATEGORIES = {
   ]
 };
 
-/**
- * Workflow execution result
- */
-export interface WorkflowResult {
-  category: string;
-  name: string;
-  success: boolean;
-  steps: string[];
-  duration: number;
-  error?: string;
-}
+// WorkflowResult is now imported from types.ts
 
 /**
  * Run a specific workflow by name
  */
 export async function runWorkflow(
-  server: McpServer,
+  server: MockMcpServer,
   category: string,
   workflowName: string
 ): Promise<WorkflowResult> {
   const startTime = Date.now();
   
-  const categoryWorkflows = WORKFLOW_CATEGORIES[category];
+  const categoryWorkflows = WORKFLOW_CATEGORIES[category as keyof typeof WORKFLOW_CATEGORIES];
   if (!categoryWorkflows) {
     throw new Error(`Category '${category}' not found`);
   }
   
-  const workflow = categoryWorkflows.find(w => w.name === workflowName);
+  const workflow = categoryWorkflows.find((w: WorkflowMetadata) => w.name === workflowName);
   if (!workflow) {
     throw new Error(`Workflow '${workflowName}' not found in category '${category}'`);
   }
@@ -216,10 +206,10 @@ export async function runWorkflow(
  * Run all workflows in a category
  */
 export async function runCategoryWorkflows(
-  server: McpServer,
+  server: MockMcpServer,
   category: string
 ): Promise<WorkflowResult[]> {
-  const categoryWorkflows = WORKFLOW_CATEGORIES[category];
+  const categoryWorkflows = WORKFLOW_CATEGORIES[category as keyof typeof WORKFLOW_CATEGORIES];
   if (!categoryWorkflows) {
     throw new Error(`Category '${category}' not found`);
   }
@@ -247,7 +237,7 @@ export async function runCategoryWorkflows(
  * Run all workflows across all categories
  */
 export async function runAllWorkflows(
-  server: McpServer
+  server: MockMcpServer
 ): Promise<Map<string, WorkflowResult[]>> {
   const allResults = new Map<string, WorkflowResult[]>();
   
