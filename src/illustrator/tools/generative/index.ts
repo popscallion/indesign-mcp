@@ -656,6 +656,226 @@ export async function registerGenerativeTools(server: McpServer): Promise<void> 
       };
     })
   );
+
+  // Tool: snap_to_grid
+  // Complexity: 3.2 (Medium)
+  // Dependencies: measure_relationships
+  server.tool(
+    "snap_to_grid",
+    {
+      gridSpec: z.object({
+        width: z.number().default(10).describe("Grid cell width"),
+        height: z.number().default(10).describe("Grid cell height"),
+        offsetX: z.number().default(0).describe("Grid X offset"),
+        offsetY: z.number().default(0).describe("Grid Y offset")
+      }).describe("Grid specifications for snapping"),
+      snapMode: z.enum(["corner", "center", "edges", "all_points"]).default("corner").describe("What part of objects to snap"),
+      useSelection: z.boolean().default(true).describe("Snap selected objects or all objects"),
+      tolerance: z.number().default(5).describe("Snap tolerance in points"),
+      previewMode: z.boolean().default(false).describe("Show preview without applying changes")
+    },
+    wrapToolForTelemetry("snap_to_grid", async (args: any) => {
+      const { gridSpec = {}, snapMode = "corner", useSelection = true, tolerance = 5, previewMode = false } = args;
+      const { width: gridWidth = 10, height: gridHeight = 10, offsetX = 0, offsetY = 0 } = gridSpec;
+      
+      const script = `
+        try {
+          if (!app.documents.length) {
+            throw new Error("No document open");
+          }
+          
+          var doc = app.activeDocument;
+          var itemsToSnap = [];
+          var snappedCount = 0;
+          var previewItems = [];
+          
+          // Collect items to snap
+          if (${useSelection}) {
+            if (doc.selection.length === 0) {
+              throw new Error("No items selected");
+            }
+            itemsToSnap = doc.selection;
+          } else {
+            itemsToSnap = doc.pageItems;
+          }
+          
+          // Function to find nearest grid point
+          function snapToGrid(x, y) {
+            var gridX = ${offsetX} + Math.round((x - ${offsetX}) / ${gridWidth}) * ${gridWidth};
+            var gridY = ${offsetY} + Math.round((y - ${offsetY}) / ${gridHeight}) * ${gridHeight};
+            return { x: gridX, y: gridY };
+          }
+          
+          // Function to check if point is within tolerance
+          function isWithinTolerance(x1, y1, x2, y2) {
+            var distance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+            return distance <= ${tolerance};
+          }
+          
+          // Process each item
+          for (var i = 0; i < itemsToSnap.length; i++) {
+            var item = itemsToSnap[i];
+            var bounds = item.visibleBounds;
+            var moved = false;
+            var deltaX = 0;
+            var deltaY = 0;
+            
+            switch("${snapMode}") {
+              case "corner":
+                // Snap top-left corner
+                var snapPoint = snapToGrid(bounds[0], bounds[1]);
+                if (isWithinTolerance(bounds[0], bounds[1], snapPoint.x, snapPoint.y)) {
+                  deltaX = snapPoint.x - bounds[0];
+                  deltaY = snapPoint.y - bounds[1];
+                  moved = true;
+                }
+                break;
+                
+              case "center":
+                // Snap center point
+                var centerX = (bounds[0] + bounds[2]) / 2;
+                var centerY = (bounds[1] + bounds[3]) / 2;
+                var snapPoint = snapToGrid(centerX, centerY);
+                if (isWithinTolerance(centerX, centerY, snapPoint.x, snapPoint.y)) {
+                  deltaX = snapPoint.x - centerX;
+                  deltaY = snapPoint.y - centerY;
+                  moved = true;
+                }
+                break;
+                
+              case "edges":
+                // Snap closest edge to grid
+                var snapLeft = snapToGrid(bounds[0], bounds[1]);
+                var snapRight = snapToGrid(bounds[2], bounds[1]);
+                var snapTop = snapToGrid(bounds[0], bounds[1]);
+                var snapBottom = snapToGrid(bounds[0], bounds[3]);
+                
+                var minDistance = ${tolerance} + 1;
+                var bestDelta = null;
+                
+                // Check left edge
+                if (isWithinTolerance(bounds[0], bounds[1], snapLeft.x, snapLeft.y)) {
+                  var dist = Math.abs(bounds[0] - snapLeft.x);
+                  if (dist < minDistance) {
+                    minDistance = dist;
+                    bestDelta = { x: snapLeft.x - bounds[0], y: 0 };
+                  }
+                }
+                
+                // Check right edge
+                if (isWithinTolerance(bounds[2], bounds[1], snapRight.x, snapRight.y)) {
+                  var dist = Math.abs(bounds[2] - snapRight.x);
+                  if (dist < minDistance) {
+                    minDistance = dist;
+                    bestDelta = { x: snapRight.x - bounds[2], y: 0 };
+                  }
+                }
+                
+                if (bestDelta) {
+                  deltaX = bestDelta.x;
+                  deltaY = bestDelta.y;
+                  moved = true;
+                }
+                break;
+                
+              case "all_points":
+                // Snap any corner to nearest grid point
+                var corners = [
+                  { x: bounds[0], y: bounds[1] }, // top-left
+                  { x: bounds[2], y: bounds[1] }, // top-right
+                  { x: bounds[0], y: bounds[3] }, // bottom-left
+                  { x: bounds[2], y: bounds[3] }  // bottom-right
+                ];
+                
+                var minDistance = ${tolerance} + 1;
+                var bestDelta = null;
+                
+                for (var c = 0; c < corners.length; c++) {
+                  var corner = corners[c];
+                  var snapPoint = snapToGrid(corner.x, corner.y);
+                  
+                  if (isWithinTolerance(corner.x, corner.y, snapPoint.x, snapPoint.y)) {
+                    var dist = Math.sqrt(
+                      Math.pow(snapPoint.x - corner.x, 2) + 
+                      Math.pow(snapPoint.y - corner.y, 2)
+                    );
+                    
+                    if (dist < minDistance) {
+                      minDistance = dist;
+                      bestDelta = {
+                        x: snapPoint.x - corner.x,
+                        y: snapPoint.y - corner.y
+                      };
+                    }
+                  }
+                }
+                
+                if (bestDelta) {
+                  deltaX = bestDelta.x;
+                  deltaY = bestDelta.y;
+                  moved = true;
+                }
+                break;
+            }
+            
+            // Apply movement or create preview
+            if (moved && Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) {
+              if (${previewMode}) {
+                // Create preview indicator (small circle)
+                var newBounds = item.visibleBounds;
+                var previewX = (newBounds[0] + newBounds[2]) / 2 + deltaX;
+                var previewY = (newBounds[1] + newBounds[3]) / 2 + deltaY;
+                
+                var preview = doc.pathItems.ellipse(
+                  previewY + 2, previewX - 2, 4, 4
+                );
+                preview.filled = true;
+                var previewColor = new RGBColor();
+                previewColor.red = 255;
+                previewColor.green = 0;
+                previewColor.blue = 0;
+                preview.fillColor = previewColor;
+                preview.stroked = false;
+                preview.name = "SNAP_PREVIEW";
+                previewItems.push(preview);
+              } else {
+                // Actually move the item
+                item.translate(deltaX, deltaY);
+              }
+              snappedCount++;
+            }
+          }
+          
+          var result = "";
+          if (${previewMode}) {
+            result = "Preview: " + snappedCount + " items would snap to grid";
+            if (previewItems.length > 0) {
+              result += " (red dots show target positions)";
+            }
+          } else {
+            result = "Snapped " + snappedCount + " items to grid";
+          }
+          
+          result += "\\\\nGrid: " + ${gridWidth} + "x" + ${gridHeight} + 
+                   " offset(" + ${offsetX} + "," + ${offsetY} + ")";
+          
+          result;
+          
+        } catch (e) {
+          "Error: " + e.message;
+        }
+      `;
+      
+      const result = await executeExtendScriptForApp(script, 'illustrator');
+      
+      return {
+        content: [{
+          type: "text" as const,
+          text: result.success ? result.result || "Grid snapping completed" : `Error: ${result.error}`
+        }]
+      };
+    })
+  );
   
   console.error("Registered Illustrator generative tools");
 }

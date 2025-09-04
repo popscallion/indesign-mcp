@@ -687,6 +687,428 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
       };
     })
   );
+
+  // Tool: bulk_style_application
+  // Complexity: 3.8 (Medium-High)
+  // Dependencies: create_graphic_style, select_elements
+  server.tool(
+    "bulk_style_application",
+    {
+      styleSource: z.enum(["existing_style", "template_object", "style_definition"]).describe("Source of style to apply"),
+      styleName: z.string().optional().describe("Name of existing graphic style (if using existing_style)"),
+      templateObjectIndex: z.number().optional().describe("Index of object to copy style from (if using template_object)"),
+      styleDefinition: z.object({
+        fill: z.object({
+          enabled: z.boolean().default(true),
+          color: z.string().optional(),
+          opacity: z.number().min(0).max(100).default(100)
+        }).optional(),
+        stroke: z.object({
+          enabled: z.boolean().default(false),
+          color: z.string().optional(),
+          width: z.number().default(1),
+          opacity: z.number().min(0).max(100).default(100)
+        }).optional(),
+        transform: z.object({
+          scale: z.number().optional().describe("Uniform scale factor"),
+          scaleX: z.number().optional().describe("X-axis scale factor"),
+          scaleY: z.number().optional().describe("Y-axis scale factor"),
+          rotation: z.number().optional().describe("Rotation in degrees"),
+          opacity: z.number().min(0).max(100).optional().describe("Overall opacity")
+        }).optional()
+      }).optional().describe("Style definition object (if using style_definition)"),
+      targetSelection: z.enum(["all", "by_type", "by_name", "by_layer", "current_selection"]).describe("How to select target objects"),
+      targetCriteria: z.object({
+        objectTypes: z.array(z.enum(["path", "text", "image", "compound", "group"])).optional().describe("Object types to target"),
+        namePattern: z.string().optional().describe("Name pattern to match (supports wildcards)"),
+        layerName: z.string().optional().describe("Layer name to target"),
+        excludePattern: z.string().optional().describe("Pattern for objects to exclude")
+      }).optional().describe("Criteria for target selection"),
+      applicationMode: z.enum(["replace", "merge", "additive"]).default("replace").describe("How to apply the style"),
+      preserveProperties: z.array(z.enum(["position", "size", "rotation", "opacity", "effects"])).optional().describe("Properties to preserve during application"),
+      batchSize: z.number().min(1).max(100).default(20).describe("Number of objects to process in each batch"),
+      reportProgress: z.boolean().default(true).describe("Report progress during processing")
+    },
+    wrapToolForTelemetry("bulk_style_application", async (args: any) => {
+      const {
+        styleSource,
+        styleName,
+        templateObjectIndex,
+        styleDefinition = {},
+        targetSelection,
+        targetCriteria = {},
+        applicationMode = "replace",
+        preserveProperties = [],
+        batchSize = 20,
+        reportProgress = true
+      } = args;
+      
+      const { objectTypes = [], namePattern, layerName, excludePattern } = targetCriteria;
+      const { fill = {}, stroke = {}, transform = {} } = styleDefinition;
+      
+      const script = `
+        try {
+          if (!app.documents.length) {
+            throw new Error("No document open");
+          }
+          
+          var doc = app.activeDocument;
+          var sourceStyle = {};
+          var targetObjects = [];
+          var processedCount = 0;
+          var errorCount = 0;
+          
+          // Step 1: Get source style
+          switch("${styleSource}") {
+            case "existing_style":
+              if ("${styleName}" === "") {
+                throw new Error("Style name required for existing_style source");
+              }
+              
+              var foundStyle = null;
+              for (var i = 0; i < doc.graphicStyles.length; i++) {
+                if (doc.graphicStyles[i].name === "${styleName}") {
+                  foundStyle = doc.graphicStyles[i];
+                  break;
+                }
+              }
+              
+              if (!foundStyle) {
+                throw new Error("Graphic style not found: ${styleName}");
+              }
+              
+              // Extract style properties from existing style
+              // Note: This is complex in ExtendScript, so we'll apply the style directly later
+              sourceStyle = { type: "graphicStyle", style: foundStyle };
+              break;
+              
+            case "template_object":
+              if (${templateObjectIndex} === undefined || ${templateObjectIndex} < 0) {
+                throw new Error("Valid template object index required");
+              }
+              
+              if (${templateObjectIndex} >= doc.pageItems.length) {
+                throw new Error("Template object index out of range");
+              }
+              
+              var templateItem = doc.pageItems[${templateObjectIndex}];
+              sourceStyle = {
+                type: "template",
+                item: templateItem,
+                fill: {
+                  enabled: templateItem.filled,
+                  color: templateItem.fillColor,
+                  opacity: templateItem.opacity
+                },
+                stroke: {
+                  enabled: templateItem.stroked,
+                  color: templateItem.strokeColor,
+                  width: templateItem.strokeWidth,
+                  cap: templateItem.strokeCap,
+                  join: templateItem.strokeJoin
+                }
+              };
+              break;
+              
+            case "style_definition":
+              sourceStyle = {
+                type: "definition",
+                fill: ${JSON.stringify(fill)},
+                stroke: ${JSON.stringify(stroke)},
+                transform: ${JSON.stringify(transform)}
+              };
+              break;
+          }
+          
+          // Step 2: Select target objects
+          switch("${targetSelection}") {
+            case "current_selection":
+              for (var j = 0; j < doc.selection.length; j++) {
+                targetObjects.push(doc.selection[j]);
+              }
+              break;
+              
+            case "all":
+              for (var k = 0; k < doc.pageItems.length; k++) {
+                targetObjects.push(doc.pageItems[k]);
+              }
+              break;
+              
+            case "by_type":
+              var types = ${JSON.stringify(objectTypes)};
+              for (var m = 0; m < doc.pageItems.length; m++) {
+                var item = doc.pageItems[m];
+                var itemType = "";
+                
+                switch(item.typename) {
+                  case "PathItem": itemType = "path"; break;
+                  case "TextFrame": itemType = "text"; break;
+                  case "PlacedItem": itemType = "image"; break;
+                  case "CompoundPathItem": itemType = "compound"; break;
+                  case "GroupItem": itemType = "group"; break;
+                  default: itemType = "other"; break;
+                }
+                
+                if (types.indexOf(itemType) !== -1) {
+                  targetObjects.push(item);
+                }
+              }
+              break;
+              
+            case "by_name":
+              if ("${namePattern}" === "") {
+                throw new Error("Name pattern required for by_name selection");
+              }
+              
+              var pattern = "${namePattern}";
+              var isWildcard = pattern.indexOf("*") !== -1;
+              
+              for (var n = 0; n < doc.pageItems.length; n++) {
+                var item = doc.pageItems[n];
+                var itemName = item.name || "";
+                
+                var matches = false;
+                if (isWildcard) {
+                  var regexPattern = pattern.replace(/\\*/g, ".*");
+                  var regex = new RegExp(regexPattern, "i");
+                  matches = regex.test(itemName);
+                } else {
+                  matches = (itemName.toLowerCase().indexOf(pattern.toLowerCase()) !== -1);
+                }
+                
+                if (matches) {
+                  targetObjects.push(item);
+                }
+              }
+              break;
+              
+            case "by_layer":
+              if ("${layerName}" === "") {
+                throw new Error("Layer name required for by_layer selection");
+              }
+              
+              var targetLayer = null;
+              for (var p = 0; p < doc.layers.length; p++) {
+                if (doc.layers[p].name === "${layerName}") {
+                  targetLayer = doc.layers[p];
+                  break;
+                }
+              }
+              
+              if (!targetLayer) {
+                throw new Error("Layer not found: ${layerName}");
+              }
+              
+              for (var q = 0; q < doc.pageItems.length; q++) {
+                if (doc.pageItems[q].layer === targetLayer) {
+                  targetObjects.push(doc.pageItems[q]);
+                }
+              }
+              break;
+          }
+          
+          // Apply exclusion pattern if specified
+          if ("${excludePattern || ''}" !== "") {
+            var filteredObjects = [];
+            var excludePattern = "${excludePattern}";
+            var isExcludeWildcard = excludePattern.indexOf("*") !== -1;
+            
+            for (var r = 0; r < targetObjects.length; r++) {
+              var item = targetObjects[r];
+              var itemName = item.name || "";
+              
+              var excluded = false;
+              if (isExcludeWildcard) {
+                var excludeRegexPattern = excludePattern.replace(/\\*/g, ".*");
+                var excludeRegex = new RegExp(excludeRegexPattern, "i");
+                excluded = excludeRegex.test(itemName);
+              } else {
+                excluded = (itemName.toLowerCase().indexOf(excludePattern.toLowerCase()) !== -1);
+              }
+              
+              if (!excluded) {
+                filteredObjects.push(item);
+              }
+            }
+            
+            targetObjects = filteredObjects;
+          }
+          
+          if (targetObjects.length === 0) {
+            throw new Error("No objects found matching the target criteria");
+          }
+          
+          // Step 3: Apply styles in batches
+          var preserveProps = ${JSON.stringify(preserveProperties)};
+          var batchSize = ${batchSize};
+          var totalBatches = Math.ceil(targetObjects.length / batchSize);
+          
+          function applyStyleToItem(item, sourceStyle, applicationMode, preserveProps) {
+            try {
+              var originalProps = {};
+              
+              // Preserve specified properties
+              if (preserveProps.indexOf("position") !== -1) {
+                originalProps.position = item.position;
+              }
+              if (preserveProps.indexOf("size") !== -1) {
+                originalProps.width = item.width;
+                originalProps.height = item.height;
+              }
+              if (preserveProps.indexOf("rotation") !== -1) {
+                originalProps.rotation = item.rotation;
+              }
+              if (preserveProps.indexOf("opacity") !== -1) {
+                originalProps.opacity = item.opacity;
+              }
+              
+              // Apply style based on source type
+              if (sourceStyle.type === "graphicStyle") {
+                sourceStyle.style.applyTo(item);
+              } else if (sourceStyle.type === "template") {
+                var template = sourceStyle;
+                
+                if (applicationMode === "replace" || applicationMode === "merge") {
+                  // Apply fill
+                  if (template.fill && template.fill.enabled) {
+                    item.filled = true;
+                    if (template.fill.color) {
+                      item.fillColor = template.fill.color;
+                    }
+                  } else if (applicationMode === "replace") {
+                    item.filled = false;
+                  }
+                  
+                  // Apply stroke
+                  if (template.stroke && template.stroke.enabled) {
+                    item.stroked = true;
+                    if (template.stroke.color) item.strokeColor = template.stroke.color;
+                    if (template.stroke.width) item.strokeWidth = template.stroke.width;
+                    if (template.stroke.cap) item.strokeCap = template.stroke.cap;
+                    if (template.stroke.join) item.strokeJoin = template.stroke.join;
+                  } else if (applicationMode === "replace") {
+                    item.stroked = false;
+                  }
+                }
+              } else if (sourceStyle.type === "definition") {
+                var def = sourceStyle;
+                
+                // Apply fill from definition
+                if (def.fill && (applicationMode === "replace" || applicationMode === "merge")) {
+                  if (def.fill.enabled !== false) {
+                    item.filled = true;
+                    if (def.fill.color) {
+                      var fillHex = def.fill.color.replace("#", "");
+                      var fillColor = new RGBColor();
+                      fillColor.red = parseInt(fillHex.substring(0, 2), 16);
+                      fillColor.green = parseInt(fillHex.substring(2, 4), 16);
+                      fillColor.blue = parseInt(fillHex.substring(4, 6), 16);
+                      item.fillColor = fillColor;
+                    }
+                  } else if (applicationMode === "replace") {
+                    item.filled = false;
+                  }
+                }
+                
+                // Apply stroke from definition
+                if (def.stroke && (applicationMode === "replace" || applicationMode === "merge")) {
+                  if (def.stroke.enabled) {
+                    item.stroked = true;
+                    if (def.stroke.color) {
+                      var strokeHex = def.stroke.color.replace("#", "");
+                      var strokeColor = new RGBColor();
+                      strokeColor.red = parseInt(strokeHex.substring(0, 2), 16);
+                      strokeColor.green = parseInt(strokeHex.substring(2, 4), 16);
+                      strokeColor.blue = parseInt(strokeHex.substring(4, 6), 16);
+                      item.strokeColor = strokeColor;
+                    }
+                    if (def.stroke.width) item.strokeWidth = def.stroke.width;
+                  } else if (applicationMode === "replace") {
+                    item.stroked = false;
+                  }
+                }
+                
+                // Apply transform from definition
+                if (def.transform) {
+                  if (def.transform.scale !== undefined) {
+                    item.resize(def.transform.scale * 100, def.transform.scale * 100);
+                  }
+                  if (def.transform.scaleX !== undefined && def.transform.scaleY !== undefined) {
+                    item.resize(def.transform.scaleX * 100, def.transform.scaleY * 100);
+                  }
+                  if (def.transform.rotation !== undefined) {
+                    item.rotate(def.transform.rotation);
+                  }
+                  if (def.transform.opacity !== undefined) {
+                    item.opacity = def.transform.opacity;
+                  }
+                }
+              }
+              
+              // Restore preserved properties
+              if (originalProps.position) item.position = originalProps.position;
+              if (originalProps.width) item.width = originalProps.width;
+              if (originalProps.height) item.height = originalProps.height;
+              if (originalProps.rotation) item.rotation = originalProps.rotation;
+              if (originalProps.opacity) item.opacity = originalProps.opacity;
+              
+              return true;
+            } catch (e) {
+              return false;
+            }
+          }
+          
+          // Process in batches
+          for (var batch = 0; batch < totalBatches; batch++) {
+            var startIdx = batch * batchSize;
+            var endIdx = Math.min(startIdx + batchSize, targetObjects.length);
+            
+            for (var idx = startIdx; idx < endIdx; idx++) {
+              var success = applyStyleToItem(
+                targetObjects[idx],
+                sourceStyle,
+                "${applicationMode}",
+                preserveProps
+              );
+              
+              if (success) {
+                processedCount++;
+              } else {
+                errorCount++;
+              }
+            }
+            
+            // Progress reporting
+            if (${reportProgress} && totalBatches > 1) {
+              var progress = Math.round((batch + 1) / totalBatches * 100);
+              // Note: Progress reporting in ExtendScript is limited
+            }
+          }
+          
+          var result = "Bulk style application completed";
+          result += "\\\\\\\\nProcessed: " + processedCount + " objects";
+          result += "\\\\\\\\nErrors: " + errorCount;
+          result += "\\\\\\\\nSource: ${styleSource}";
+          result += "\\\\\\\\nMode: ${applicationMode}";
+          result += "\\\\\\\\nPreserved: " + preserveProps.join(", ");
+          
+          result;
+          
+        } catch (e) {
+          "Error: " + e.message;
+        }
+      `;
+      
+      const result = await executeExtendScriptForApp(script, 'illustrator');
+      
+      return {
+        content: [{
+          type: "text" as const,
+          text: result.success ? result.result || "Bulk style application completed" : `Error: ${result.error}`
+        }]
+      };
+    })
+  );
   
   console.error("Registered Illustrator style tools");
 }
