@@ -154,6 +154,7 @@ export interface TestConfig {
   referenceMetrics: LayoutMetrics;
   referenceImage: string;
   referenceDescription?: string;
+  enableVisualTesting?: boolean;
 }
 
 /**
