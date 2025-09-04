@@ -11,7 +11,7 @@ import { EventEmitter } from 'events';
 import { createInDesignMcpServer } from '../../index.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { TelemetryCapture, TelemetrySession } from '../../tools/telemetry.js';
+import { TelemetryCapture, TelemetrySession } from "../../telemetry.js.js';
 
 /**
  * Sub-agent configuration

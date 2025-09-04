@@ -8,7 +8,7 @@ import { PatternAnalyzer } from './patternAnalyzer.js';
 import { ClaudeAnalyzer } from './claudeAnalyzer.js';
 import { loadReferenceMetrics, getReferenceImagePath } from './metricsLoader.js';
 import { TestConfig, TestRun, GenerationResult } from './types.js';
-import { TelemetryCapture } from '../../tools/telemetry.js';
+import { TelemetryCapture } from "../../telemetry.js.js';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';

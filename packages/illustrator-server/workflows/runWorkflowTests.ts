@@ -22,7 +22,7 @@ import {
   exportWorkflowDocumentation,
   WORKFLOW_CATEGORIES
 } from "./index.js";
-import { MockMcpServer } from "./types.js";
+import { MockMcpServer } from "@mcp/shared/types.js.js";
 
 // Parse command line arguments
 function parseArgs(): {

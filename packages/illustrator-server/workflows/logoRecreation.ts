@@ -6,7 +6,7 @@
  * to recreate a professional logo design
  */
 
-import { MockMcpServer, LogoWorkflowConfig } from "./types.js";
+import { MockMcpServer, LogoWorkflowConfig } from "@mcp/shared/types.js.js";
 
 /**
  * Workflow: Create a tech company logo with geometric shapes

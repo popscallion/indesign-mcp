@@ -5,7 +5,7 @@
  * Central registry and runner for all Illustrator MCP workflow tests
  */
 
-import { MockMcpServer, WorkflowResult, WorkflowMetadata, WorkflowCategories } from "./types.js";
+import { MockMcpServer, WorkflowResult, WorkflowMetadata, WorkflowCategories } from "@mcp/shared/types.js.js";
 
 // Import all workflow modules
 import {

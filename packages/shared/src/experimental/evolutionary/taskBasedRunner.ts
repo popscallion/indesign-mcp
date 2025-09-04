@@ -6,8 +6,8 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
-import { TelemetryCapture, TelemetrySession } from '../../tools/telemetry.js';
-import { TelemetryPersistence } from '../../tools/telemetryPersistence.js';
+import { TelemetryCapture, TelemetrySession } from "../../telemetry.js.js';
+import { TelemetryPersistence } from "../../telemetry.jsPersistence.js';
 import { LayoutMetrics, ComparisonResult } from '../../types.js';
 import { getMcpBridge, McpBridge } from './mcpBridge.js';
 import { TestConfig, TestRun, GenerationResult } from './types.js';

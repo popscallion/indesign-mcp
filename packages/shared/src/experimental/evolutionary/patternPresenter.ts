@@ -4,7 +4,7 @@
  */
 
 import { Pattern, PatternAnalysis, PatternStatistics, ContextualInfo, TestRun } from './types.js';
-import { ToolCall } from '../../tools/telemetry.js';
+import { ToolCall } from "../../telemetry.js.js';
 import { StatisticalAnalysis } from './statisticalAnalysis.js';
 
 /**

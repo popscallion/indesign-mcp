@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "test": "jest",
+    "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
-    "@mcp/shared": "workspace:*"
+    "@mcp/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "tsx": "^4.19.4"
   }
 }

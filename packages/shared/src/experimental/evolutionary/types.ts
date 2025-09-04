@@ -3,7 +3,7 @@
  */
 
 import { LayoutMetrics, ComparisonResult } from '../../types.js';
-import { ToolCall, TelemetrySession } from '../../tools/telemetry.js';
+import { ToolCall, TelemetrySession } from "../../telemetry.js.js';
 
 /**
  * Improvement types that can be applied to MCP tools

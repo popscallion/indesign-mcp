@@ -5,7 +5,7 @@
  * Demonstrates CSV import, data merge, and creating charts with shapes
  */
 
-import { MockMcpServer, ChartConfig, DataPoint } from "./types.js";
+import { MockMcpServer, ChartConfig, DataPoint } from "@mcp/shared/types.js.js";
 
 /**
  * Workflow: Create bar chart from CSV data

@@ -5,7 +5,7 @@
  * Demonstrates text on path, envelope distortion, warping, and advanced text effects
  */
 
-import { MockMcpServer, TypographyConfig } from "./types.js";
+import { MockMcpServer, TypographyConfig } from "@mcp/shared/types.js.js";
 
 /**
  * Workflow: Create vintage typography poster

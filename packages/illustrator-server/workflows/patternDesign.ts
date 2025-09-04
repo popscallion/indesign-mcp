@@ -5,7 +5,7 @@
  * Demonstrates procedural pattern generation, color harmonies, and swatch management
  */
 
-import { MockMcpServer, PatternWorkflowConfig } from "./types.js";
+import { MockMcpServer, PatternWorkflowConfig } from "@mcp/shared/types.js.js";
 
 /**
  * Workflow: Create geometric repeating pattern
