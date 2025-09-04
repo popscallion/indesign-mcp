@@ -12,8 +12,8 @@ import { registerExportTools } from "./tools/export/index.js";
 import { registerStyleTools } from "./tools/style/index.js";
 import { registerGenerativeTools } from "./tools/generative/index.js";
 import { registerSymbolTools } from "./tools/symbol/index.js";
-// import { registerDataTools } from "./tools/data/index.js";
-// import { registerAnalysisTools } from "./tools/analysis/index.js";
+import { registerDataTools } from "./tools/data/index.js";
+import { registerAnalysisTools } from "./tools/analysis/index.js";
 
 /**
  * Registers all Illustrator tools with the MCP server
@@ -31,14 +31,13 @@ export async function registerAllIllustratorTools(server: McpServer): Promise<vo
     await registerGenerativeTools(server);
     await registerSymbolTools(server);
     
-    // Phase 3: Intermediate Tools
-    // Additional tools will be added here
+    // Phase 3: Intermediate Tools (Complete)
     
     // Phase 4: Advanced Features
-    // await registerDataTools(server);
+    await registerDataTools(server);
     
-    // Phase 5: AI/Generative Tools
-    // await registerAnalysisTools(server);
+    // Phase 5: AI/Analysis Tools
+    await registerAnalysisTools(server);
     
     console.error("Illustrator MCP Tools registered successfully");
   } catch (error) {

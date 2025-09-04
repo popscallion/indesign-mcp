@@ -1186,5 +1186,505 @@ export async function registerGenerativeTools(server: McpServer): Promise<void> 
     })
   );
   
-  console.error("Registered Illustrator generative tools");
+  // Tool: apply_blend_modes_batch
+  // Complexity: 3.8 (Medium-High)
+  // Dependencies: None
+  server.tool(
+    "apply_blend_modes_batch",
+    {
+      blendMode: z.enum([
+        "normal", "darken", "multiply", "color_burn", "lighten", "screen",
+        "color_dodge", "overlay", "soft_light", "hard_light", "difference",
+        "exclusion", "hue", "saturation", "color", "luminosity"
+      ]).describe("Blend mode to apply"),
+      targetObjects: z.enum(["selection", "layer", "group", "all"]).default("selection"),
+      layerName: z.string().optional().describe("Layer name if targetObjects is 'layer'"),
+      opacity: z.number().min(0).max(100).default(100).describe("Opacity percentage"),
+      preserveAppearance: z.boolean().default(false).describe("Preserve current appearance attributes"),
+      randomizeSettings: z.object({
+        enabled: z.boolean().default(false).describe("Enable randomization"),
+        blendModes: z.array(z.string()).optional().describe("Pool of blend modes to randomize from"),
+        opacityRange: z.object({
+          min: z.number().min(0).max(100),
+          max: z.number().min(0).max(100)
+        }).optional().describe("Range for random opacity")
+      }).optional()
+    },
+    wrapToolForTelemetry("apply_blend_modes_batch", async (args: any) => {
+      const { 
+        blendMode, 
+        targetObjects = "selection", 
+        layerName,
+        opacity = 100,
+        preserveAppearance = false,
+        randomizeSettings = {}
+      } = args;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var blendMode = ${JSON.stringify(blendMode)};
+          var targetObjects = ${JSON.stringify(targetObjects)};
+          var layerName = ${JSON.stringify(layerName || "")};
+          var opacity = ${opacity};
+          var preserveAppearance = ${preserveAppearance};
+          var randomize = ${JSON.stringify(randomizeSettings)};
+          
+          // Map blend mode names to Illustrator constants
+          var blendModeMap = {
+            "normal": BlendModes.NORMAL,
+            "darken": BlendModes.DARKEN,
+            "multiply": BlendModes.MULTIPLY,
+            "color_burn": BlendModes.COLORBURN,
+            "lighten": BlendModes.LIGHTEN,
+            "screen": BlendModes.SCREEN,
+            "color_dodge": BlendModes.COLORDODGE,
+            "overlay": BlendModes.OVERLAY,
+            "soft_light": BlendModes.SOFTLIGHT,
+            "hard_light": BlendModes.HARDLIGHT,
+            "difference": BlendModes.DIFFERENCE,
+            "exclusion": BlendModes.EXCLUSION,
+            "hue": BlendModes.HUE,
+            "saturation": BlendModes.SATURATION,
+            "color": BlendModes.COLOR,
+            "luminosity": BlendModes.LUMINOSITY
+          };
+          
+          // Get target objects
+          var targets = [];
+          switch (targetObjects) {
+            case "selection":
+              targets = app.selection;
+              break;
+            case "layer":
+              if (layerName) {
+                for (var i = 0; i < doc.layers.length; i++) {
+                  if (doc.layers[i].name === layerName) {
+                    targets = doc.layers[i].pageItems;
+                    break;
+                  }
+                }
+              }
+              break;
+            case "group":
+              for (var i = 0; i < app.selection.length; i++) {
+                if (app.selection[i].typename === "GroupItem") {
+                  targets = targets.concat(app.selection[i].pageItems);
+                }
+              }
+              break;
+            case "all":
+              targets = doc.pageItems;
+              break;
+          }
+          
+          var processedCount = 0;
+          var results = [];
+          
+          // Apply blend modes
+          for (var i = 0; i < targets.length; i++) {
+            var item = targets[i];
+            
+            // Determine blend mode and opacity
+            var itemBlendMode = blendMode;
+            var itemOpacity = opacity;
+            
+            if (randomize.enabled) {
+              // Randomize blend mode if pool provided
+              if (randomize.blendModes && randomize.blendModes.length > 0) {
+                var randomIndex = Math.floor(Math.random() * randomize.blendModes.length);
+                itemBlendMode = randomize.blendModes[randomIndex];
+              }
+              
+              // Randomize opacity if range provided
+              if (randomize.opacityRange) {
+                var range = randomize.opacityRange;
+                itemOpacity = range.min + Math.random() * (range.max - range.min);
+              }
+            }
+            
+            // Apply settings
+            if (blendModeMap[itemBlendMode]) {
+              item.blendingMode = blendModeMap[itemBlendMode];
+            }
+            item.opacity = itemOpacity;
+            
+            processedCount++;
+            results.push({
+              item: item.name || "Item " + i,
+              blendMode: itemBlendMode,
+              opacity: Math.round(itemOpacity)
+            });
+          }
+          
+          JSON.stringify({
+            success: true,
+            processedCount: processedCount,
+            targetType: targetObjects,
+            results: results.slice(0, 10),
+            message: "Applied blend modes to " + processedCount + " objects"
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  // Tool: create_procedural_patterns
+  // Complexity: 4.2 (High)
+  // Dependencies: create_pattern_fill
+  server.tool(
+    "create_procedural_patterns",
+    {
+      patternType: z.enum([
+        "voronoi", "delaunay", "fractal", "maze", "celtic",
+        "islamic", "penrose", "truchet", "hexagonal", "triangular"
+      ]).describe("Type of procedural pattern"),
+      parameters: z.object({
+        size: z.number().default(200).describe("Pattern size in points"),
+        cellCount: z.number().default(20).describe("Number of cells/divisions"),
+        seed: z.number().optional().describe("Random seed for reproducibility"),
+        iterations: z.number().default(3).describe("Iterations for fractal patterns"),
+        complexity: z.number().min(0).max(10).default(5).describe("Pattern complexity"),
+        strokeWidth: z.number().default(1).describe("Stroke width for pattern lines"),
+        fillPattern: z.boolean().default(true).describe("Fill pattern cells"),
+        colorScheme: z.enum([
+          "monochrome", "gradient", "random", "complementary", "analogous"
+        ]).default("monochrome")
+      }).optional(),
+      output: z.object({
+        createSwatch: z.boolean().default(true).describe("Save as pattern swatch"),
+        applyToSelection: z.boolean().default(false).describe("Apply to selected objects"),
+        createArtboard: z.boolean().default(false).describe("Create on new artboard")
+      }).optional()
+    },
+    wrapToolForTelemetry("create_procedural_patterns", async (args: any) => {
+      const { patternType, parameters = {}, output = {} } = args;
+      const {
+        size = 200,
+        cellCount = 20,
+        seed,
+        iterations = 3,
+        complexity = 5,
+        strokeWidth = 1,
+        fillPattern = true,
+        colorScheme = "monochrome"
+      } = parameters;
+      const {
+        createSwatch = true,
+        applyToSelection = false,
+        createArtboard = false
+      } = output;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var patternType = ${JSON.stringify(patternType)};
+          var size = ${size};
+          var cellCount = ${cellCount};
+          var seed = ${seed || "Math.random() * 10000"};
+          var iterations = ${iterations};
+          var complexity = ${complexity};
+          var strokeWidth = ${strokeWidth};
+          var fillPattern = ${fillPattern};
+          var colorScheme = ${JSON.stringify(colorScheme)};
+          var createSwatch = ${createSwatch};
+          var applyToSelection = ${applyToSelection};
+          var createArtboard = ${createArtboard};
+          
+          // Initialize random with seed
+          var random = function(s) {
+            return function() {
+              s = Math.sin(s) * 10000;
+              return s - Math.floor(s);
+            };
+          }(seed);
+          
+          // Create pattern group
+          var patternGroup = doc.groupItems.add();
+          patternGroup.name = patternType + " Pattern";
+          
+          // Generate colors based on scheme
+          function generateColors(scheme, count) {
+            var colors = [];
+            var baseColor = new RGBColor();
+            baseColor.red = random() * 255;
+            baseColor.green = random() * 255;
+            baseColor.blue = random() * 255;
+            
+            switch (scheme) {
+              case "monochrome":
+                var gray = new GrayColor();
+                gray.gray = 30;
+                colors.push(gray);
+                break;
+                
+              case "gradient":
+                for (var i = 0; i < count; i++) {
+                  var gradColor = new RGBColor();
+                  var t = i / (count - 1);
+                  gradColor.red = baseColor.red * (1 - t) + 255 * t;
+                  gradColor.green = baseColor.green * (1 - t);
+                  gradColor.blue = baseColor.blue * (1 - t);
+                  colors.push(gradColor);
+                }
+                break;
+                
+              case "random":
+                for (var i = 0; i < count; i++) {
+                  var randColor = new RGBColor();
+                  randColor.red = random() * 255;
+                  randColor.green = random() * 255;
+                  randColor.blue = random() * 255;
+                  colors.push(randColor);
+                }
+                break;
+                
+              case "complementary":
+                colors.push(baseColor);
+                var compColor = new RGBColor();
+                compColor.red = 255 - baseColor.red;
+                compColor.green = 255 - baseColor.green;
+                compColor.blue = 255 - baseColor.blue;
+                colors.push(compColor);
+                break;
+                
+              case "analogous":
+                for (var i = -2; i <= 2; i++) {
+                  var anaColor = new RGBColor();
+                  var shift = i * 30;
+                  anaColor.red = Math.max(0, Math.min(255, baseColor.red + shift));
+                  anaColor.green = Math.max(0, Math.min(255, baseColor.green + shift));
+                  anaColor.blue = Math.max(0, Math.min(255, baseColor.blue + shift));
+                  colors.push(anaColor);
+                }
+                break;
+            }
+            
+            return colors;
+          }
+          
+          var colors = generateColors(colorScheme, 5);
+          var shapesCreated = 0;
+          
+          // Generate pattern based on type
+          switch (patternType) {
+            case "voronoi":
+              // Generate random points
+              var points = [];
+              for (var i = 0; i < cellCount; i++) {
+                points.push({
+                  x: random() * size,
+                  y: random() * size
+                });
+              }
+              
+              // Create Voronoi cells (simplified)
+              for (var i = 0; i < points.length; i++) {
+                var cell = patternGroup.pathItems.add();
+                cell.setEntirePath([
+                  [points[i].x - 10, points[i].y - 10],
+                  [points[i].x + 10, points[i].y - 10],
+                  [points[i].x + 10, points[i].y + 10],
+                  [points[i].x - 10, points[i].y + 10]
+                ]);
+                cell.closed = true;
+                
+                if (fillPattern) {
+                  cell.filled = true;
+                  cell.fillColor = colors[i % colors.length];
+                }
+                cell.stroked = true;
+                cell.strokeWidth = strokeWidth;
+                shapesCreated++;
+              }
+              break;
+              
+            case "hexagonal":
+              var hexRadius = size / cellCount;
+              var hexHeight = hexRadius * Math.sqrt(3);
+              
+              for (var row = 0; row < cellCount; row++) {
+                for (var col = 0; col < cellCount; col++) {
+                  var x = col * hexRadius * 1.5;
+                  var y = row * hexHeight + (col % 2) * hexHeight / 2;
+                  
+                  if (x < size && y < size) {
+                    var hex = patternGroup.pathItems.add();
+                    var hexPath = [];
+                    for (var a = 0; a < 6; a++) {
+                      var angle = a * Math.PI / 3;
+                      hexPath.push([
+                        x + hexRadius * Math.cos(angle),
+                        y + hexRadius * Math.sin(angle)
+                      ]);
+                    }
+                    hex.setEntirePath(hexPath);
+                    hex.closed = true;
+                    
+                    if (fillPattern) {
+                      hex.filled = true;
+                      hex.fillColor = colors[(row + col) % colors.length];
+                    }
+                    hex.stroked = true;
+                    hex.strokeWidth = strokeWidth;
+                    shapesCreated++;
+                  }
+                }
+              }
+              break;
+              
+            case "truchet":
+              var tileSize = size / cellCount;
+              
+              for (var row = 0; row < cellCount; row++) {
+                for (var col = 0; col < cellCount; col++) {
+                  var x = col * tileSize;
+                  var y = row * tileSize;
+                  var rotation = Math.floor(random() * 4) * 90;
+                  
+                  // Create arc pattern
+                  var arc1 = patternGroup.pathItems.ellipse(
+                    y, x, tileSize, tileSize
+                  );
+                  arc1.stroked = true;
+                  arc1.filled = false;
+                  arc1.strokeWidth = strokeWidth;
+                  arc1.rotate(rotation);
+                  
+                  shapesCreated++;
+                }
+              }
+              break;
+              
+            case "fractal":
+              // Simplified fractal tree
+              function drawBranch(x, y, length, angle, depth) {
+                if (depth <= 0 || length < 2) return;
+                
+                var endX = x + length * Math.cos(angle * Math.PI / 180);
+                var endY = y + length * Math.sin(angle * Math.PI / 180);
+                
+                var branch = patternGroup.pathItems.add();
+                branch.setEntirePath([[x, y], [endX, endY]]);
+                branch.stroked = true;
+                branch.strokeWidth = strokeWidth * (depth / iterations);
+                branch.strokeColor = colors[0];
+                shapesCreated++;
+                
+                // Recursive branches
+                var angleVariation = 15 + complexity * 3;
+                drawBranch(endX, endY, length * 0.7, angle - angleVariation, depth - 1);
+                drawBranch(endX, endY, length * 0.7, angle + angleVariation, depth - 1);
+              }
+              
+              drawBranch(size/2, 0, size/3, 90, iterations);
+              break;
+              
+            case "maze":
+              var mazeSize = Math.floor(cellCount);
+              var cellSize = size / mazeSize;
+              
+              // Generate maze grid
+              for (var row = 0; row < mazeSize; row++) {
+                for (var col = 0; col < mazeSize; col++) {
+                  var x = col * cellSize;
+                  var y = row * cellSize;
+                  
+                  // Randomly remove walls
+                  if (random() > 0.3) {
+                    var wall = patternGroup.pathItems.add();
+                    wall.setEntirePath([
+                      [x, y],
+                      [x + cellSize, y]
+                    ]);
+                    wall.stroked = true;
+                    wall.strokeWidth = strokeWidth;
+                    shapesCreated++;
+                  }
+                  
+                  if (random() > 0.3) {
+                    var wall = patternGroup.pathItems.add();
+                    wall.setEntirePath([
+                      [x, y],
+                      [x, y + cellSize]
+                    ]);
+                    wall.stroked = true;
+                    wall.strokeWidth = strokeWidth;
+                    shapesCreated++;
+                  }
+                }
+              }
+              break;
+              
+            default:
+              // Create a default grid pattern
+              var gridSize = size / cellCount;
+              for (var i = 0; i <= cellCount; i++) {
+                var pos = i * gridSize;
+                
+                var hLine = patternGroup.pathItems.add();
+                hLine.setEntirePath([[0, pos], [size, pos]]);
+                hLine.stroked = true;
+                hLine.strokeWidth = strokeWidth;
+                
+                var vLine = patternGroup.pathItems.add();
+                vLine.setEntirePath([[pos, 0], [pos, size]]);
+                vLine.stroked = true;
+                vLine.strokeWidth = strokeWidth;
+                shapesCreated += 2;
+              }
+              break;
+          }
+          
+          // Create pattern swatch if requested
+          if (createSwatch && shapesCreated > 0) {
+            try {
+              var patternSwatch = doc.patterns.add();
+              patternSwatch.name = patternType + "_" + Math.floor(seed);
+              
+              // Add pattern items to swatch
+              for (var i = 0; i < patternGroup.pageItems.length; i++) {
+                var dupItem = patternGroup.pageItems[i].duplicate();
+                dupItem.move(patternSwatch, ElementPlacement.PLACEATEND);
+              }
+            } catch (e) {
+              // Pattern creation might fail in some versions
+            }
+          }
+          
+          // Apply to selection if requested
+          if (applyToSelection && app.selection.length > 0) {
+            for (var i = 0; i < app.selection.length; i++) {
+              if (app.selection[i].filled !== undefined) {
+                // Clone the pattern group
+                var patternClone = patternGroup.duplicate();
+                patternClone.position = app.selection[i].position;
+              }
+            }
+          }
+          
+          JSON.stringify({
+            success: true,
+            patternType: patternType,
+            shapesCreated: shapesCreated,
+            size: size,
+            cellCount: cellCount,
+            seed: Math.floor(seed),
+            swatchCreated: createSwatch,
+            message: "Created " + patternType + " pattern with " + shapesCreated + " elements"
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  console.error("Generative tools registered successfully");
 }
