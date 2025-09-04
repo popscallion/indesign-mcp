@@ -1,102 +1,183 @@
 # CLAUDE.md
 
-Development instructions for Claude Code when working with this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 🎯 Project Overview
 
-**Adobe Creative Suite MCP Server** - AI-driven automation platform for Adobe InDesign and Illustrator using TypeScript MCP (Model Context Protocol) via ExtendScript.
+**Adobe Creative Suite MCP Server** - An AI-driven automation platform for Adobe InDesign and Illustrator using a TypeScript-based MCP (Model Context Protocol) server that bridges LLMs with Adobe applications via ExtendScript.
 
 ### Current State
-- **InDesign**: 52+ production tools, evolutionary testing operational
-- **Illustrator**: 44 tools implemented, awaiting real-world testing
-- **Architecture**: Multi-app support, HTTP/HTTPS transport, telemetry system
+- **InDesign**: 52+ production-ready tools with a fully operational evolutionary testing system.
+- **Illustrator**: 44 tools implemented, awaiting real-world testing and validation.
+- **Architecture**: Robust multi-app support, flexible HTTP/HTTPS and stdio transport, and an integrated telemetry system.
+
+### 📌 Current Development Focus: Improving LLM Decision-Making
+
+While the MCP tools are functionally complete and execute successfully, the primary challenge is **optimizing the LLM's strategic decisions**. LLMs often struggle with which tools to use, when, and with what parameters, leading to suboptimal results.
+
+Our active work is focused on:
+1.  **Evolutionary Testing**: Using a task-based system to automatically test and improve tool descriptions.
+2.  **Pattern Analysis**: Identifying common failure patterns in LLM tool usage.
+3.  **Improvement Generation**: Leveraging AI to analyze patterns and propose concrete improvements.
 
 ## 📁 Project Structure
 
 ```
-adobe-mcp/
+indesign-mcp/
 ├── src/
-│   ├── index.ts                 # Server entry (multi-app support)
+│   ├── index.ts                 # Server entry point (multi-app support)
 │   ├── extendscript.ts          # AppleScript-ExtendScript bridge
-│   ├── tools/                   # InDesign tools (52+)
+│   ├── types.ts                 # TypeScript type definitions
+│   ├── tools/                   # InDesign tools (10 categories, 52+ tools)
 │   └── illustrator/
-│       ├── tools/               # Illustrator tools (44)
-│       └── workflows/           # Test workflows (14)
+│       ├── tools/               # Illustrator tools (9 categories, 44 tools)
+│       └── workflows/           # Test workflows (14 scenarios)
 ├── src/experimental/
-│   ├── evolutionary/            # Testing system
-│   └── visual-testing/          # Peekaboo integration
+│   ├── evolutionary/            # Evolutionary testing system
+│   └── visual-testing/          # Peekaboo visual testing integration
+├── docs/                        # Documentation and API references
 └── dist/                        # Compiled JavaScript
 ```
 
 ## 🚀 Development Commands
 
 ```bash
-# Build and test
-npm run build
-npm test
+# Build and run
+npm run build        # Compile TypeScript to dist/
+npm start           # Run MCP server (stdio, InDesign mode)
+MCP_APP_MODE=illustrator npm start # Run in Illustrator mode
 
-# Run server
-npm start                           # InDesign mode
-MCP_APP_MODE=illustrator npm start # Illustrator mode
+# HTTP/HTTPS development
+npm run dev:http    # Dev mode with HTTP + ngrok
+npm run dev:https   # Dev mode with HTTPS + ngrok
 
-# HTTP with ngrok
-npm run start:http
+# Testing and validation
+npm test            # Run unit tests with Jest
+npm run lint        # Run ESLint on TypeScript files
+npm run typecheck   # Type check main code and tests
 
-# Test workflows
+# Illustrator workflow testing
 npx tsx src/illustrator/workflows/runWorkflowTests.ts --all
 ```
 
-## ⚡ Key Development Patterns
+## 🖥️ Claude Desktop Integration
 
-### ExtendScript Requirements
-- Use `array.join()` not `+=` for strings
-- Convert booleans to strings: `"true"`/`"false"`
-- Double-escape newlines: `\\\\n`
-- Wrap all code in try/catch
+To make all InDesign and Illustrator tools available as native extensions in Claude Desktop:
+
+**1. Build the Server**
+```bash
+npm run build
+```
+
+**2. Configure Claude Desktop**
+
+Edit your `claude_desktop_config.json` file (usually in `~/Library/Application Support/Claude/` on macOS) and add the server configuration:
+
+```json
+{
+  "mcpServers": {
+    "indesign-mcp": {
+      "command": "node",
+      "args": ["/path/to/your/indesign-mcp/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
+```
+
+**3. Prerequisites**
+- Adobe InDesign or Illustrator must be running.
+- A document should be open for most tools.
+- Grant macOS automation permissions when prompted.
+- Restart Claude Desktop after any configuration changes.
+
+## ⚡ Core Development Patterns
 
 ### Tool Registration
+All tools must be registered with the server and wrapped for telemetry.
+
 ```typescript
 server.tool(name, schema, wrapToolForTelemetry(name, handler));
 ```
 
-### Testing Approach
-1. Build: `npm run build`
-2. Test compilation: `npm test`
-3. Run workflows: Mock testing available
-4. Real testing: Requires Adobe apps running
+### ExtendScript Template Pattern
+Use a `try/catch` block and manual JSON-like string building for reliable results.
 
-## 📋 Active Development Focus
+```typescript
+const extendScript = `
+  try {
+    if (!app.documents.length) throw new Error("No document open");
+    var doc = app.activeDocument;
+    // ... your logic ...
+    var resultStr = "{\"success\":true}";
+    resultStr;
+  } catch (e) {
+    var errorStr = "{\"success\":false,\"error\":\"" + e.message.replace(/\"/g, '\\ \\ \\'') + "\"}";
+    errorStr;
+  }
+`;
+```
 
-### Immediate Tasks
-1. Test Illustrator tools with actual Adobe Illustrator
-2. Document any ExtendScript API quirks
-3. Fix runtime errors if found
+## ⚠️ ExtendScript Best Practices & Pitfalls
 
-### Known Issues
-- Illustrator tools untested with real app
-- LLM tool selection needs optimization
-- Performance degrades with large documents
+### Critical Rules
+1.  **String Building**: **NEVER** use `+=` for string concatenation in loops. It causes severe performance issues. **ALWAYS** use `array.join()`.
+    ```javascript
+    // ✅ CORRECT
+    var parts = [];
+    for (var i = 0; i < items.length; i++) {
+      parts.push(items[i]);
+    }
+    var result = parts.join(",");
+    ```
+2.  **Booleans**: ExtendScript does not reliably handle TypeScript booleans. **ALWAYS** convert them to string literals: `"true"` or `"false"`.
+3.  **JSON**: ExtendScript **lacks native `JSON` support**. You must build JSON-like strings manually or use the provided polyfill.
+4.  **Newlines**: When passing strings in template literals, newlines must be double-escaped: `\n`.
 
-## 🔗 Key Files
+### Common Pitfalls & Solutions
+-   **`JSON is undefined` Error**: This is expected. Use manual string building or import `JSON2_POLYFILL` from `src/utils/json2-polyfill.js`.
+-   **`progressLogger.log is not a function`**: The `progressLogger` can be undefined. Always provide a no-op fallback.
+-   **Selection State Issues**: The selection can be empty or invalid. Your script should have fallback logic to get a working object if nothing is selected.
+-   **Color Management**: 
+    -   **Colors ARE Swatches**: Creating a color via `doc.colors.add()` automatically adds it to the swatches panel. **DO NOT** use `doc.swatches.add()`, which doesn't exist.
+    -   **Transparency**: Use the nested `object.transparencySettings.blendingSettings.opacity` property, not a top-level `transparency` property.
 
-**Entry Points**:
-- `src/index.ts` - Server configuration
-- `src/tools/index.ts` - InDesign tool registry
-- `src/illustrator/index.ts` - Illustrator tool registry
+## 🧪 Testing & Debugging
 
-**Testing**:
-- `src/illustrator/workflows/` - Test scenarios
-- `src/experimental/evolutionary/` - Testing system
+### Test Document Setup
+Always have these documents ready for testing:
+-   An **empty document**.
+-   A **simple document** with 1-2 pages and basic content.
+-   A **complex document** with multiple pages, threaded text frames, various styles, and placed images.
 
-**Documentation**:
-- [PROJECT-STATUS.md](PROJECT-STATUS.md) - Current status
-- [TESTING-GUIDE.md](TESTING-GUIDE.md) - Testing procedures
-- [README.md](README.md) - Setup instructions
+### Debugging Workflow
+1.  **Compile & Type-Check**: Run `npm run build` and `npm run typecheck` first.
+2.  **Run the Tool**: Execute the tool from your MCP client.
+3.  **Check InDesign**: Visually inspect the result in the application.
+4.  **Check Console**: Open InDesign's JavaScript Console (`Window → Utilities → JavaScript Console`) to see errors.
+5.  **Add Debug Logs**: Add logging to your ExtendScript to trace execution flow and variable states. Return debug info in the error case for easier troubleshooting.
 
-## ⚠️ Critical Reminders
+```javascript
+// Example: Add debug checkpoints to your script
+var debugSteps = [];
+try {
+  debugSteps.push("Started operation");
+  var doc = app.activeDocument;
+  debugSteps.push("Got document: " + doc.name);
+  // ...
+} catch (e) {
+  var debugStr = "Debug: " + debugSteps.join(" | ") + " | Error: " + e.message;
+  return debugStr; // Return debug string on failure
+}
+```
 
-1. **Always test with Adobe apps running**
-2. **Check MCP_APP_MODE for Illustrator testing**
-3. **Use telemetry wrapper for all new tools**
-4. **Document ExtendScript quirks when found**
-5. **Run evolutionary testing after changes**
+## 🔗 Key Files & Documentation
+
+-   **Entry Points**: `src/index.ts`, `src/tools/index.ts`, `src/illustrator/index.ts`
+-   **Testing**: `TESTING-GUIDE.md`, `src/illustrator/workflows/`, `src/experimental/evolutionary/`
+-   **Project Status**: `PROJECT-STATUS.md`
+-   **Setup**: `README.md`
+-   **InDesign API**: The full ExtendScript API documentation is available in the `docs/` directory.
+

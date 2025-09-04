@@ -72,7 +72,7 @@ CLAUDE.md
 docs/
 
 # Root markdown files (PRDs and guides)
-/*.md
+
 !README.md
 !PROJECT-STATUS.md
 !TESTING-GUIDE.md
