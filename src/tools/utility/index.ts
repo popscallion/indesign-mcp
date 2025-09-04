@@ -699,8 +699,8 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
         object_type: z.enum(["all", "text_frames", "images", "rectangles", "selected"]).default("selected").describe("Type of objects to copy"),
         layer_name: z.string().optional().describe("Layer name to filter objects"),
         position_filter: z.object({
-          x_range: z.tuple([z.number(), z.number()]).optional().describe("X position range [min, max]"),
-          y_range: z.tuple([z.number(), z.number()]).optional().describe("Y position range [min, max]")
+          x_range: z.object({ min: z.number(), max: z.number() }).optional().describe("X position range"),
+          y_range: z.object({ min: z.number(), max: z.number() }).optional().describe("Y position range")
         }).optional().describe("Position-based filtering")
       }).describe("Criteria for selecting objects to copy"),
       positioning: z.object({
