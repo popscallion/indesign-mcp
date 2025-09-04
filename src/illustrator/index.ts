@@ -10,7 +10,7 @@ import { registerGeometryTools } from "./tools/geometry/index.js";
 import { registerTransformTools } from "./tools/transform/index.js";
 import { registerExportTools } from "./tools/export/index.js";
 import { registerStyleTools } from "./tools/style/index.js";
-// import { registerGenerativeTools } from "./tools/generative/index.js";
+import { registerGenerativeTools } from "./tools/generative/index.js";
 // import { registerDataTools } from "./tools/data/index.js";
 // import { registerAnalysisTools } from "./tools/analysis/index.js";
 
@@ -27,7 +27,7 @@ export async function registerAllIllustratorTools(server: McpServer): Promise<vo
     await registerTransformTools(server);
     await registerExportTools(server);
     await registerStyleTools(server);
-    // await registerGenerativeTools(server);
+    await registerGenerativeTools(server);
     
     // Phase 3: Intermediate Tools
     // Additional tools will be added here
@@ -62,9 +62,12 @@ export function getIllustratorToolList(): string[] {
     'apply_transformation',
     'extract_layer_assets',
     'batch_export_layouts',
+    'configure_export_presets',
     'generate_color_variations',
     'create_graphic_style',
     'create_text_on_path',
+    'create_grid_layout',
+    'create_pattern_fill',
     // More tools will be added as implemented...
   ];
 }

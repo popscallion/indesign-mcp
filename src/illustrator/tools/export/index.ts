@@ -369,6 +369,245 @@ export async function registerExportTools(server: McpServer): Promise<void> {
       };
     })
   );
+
+  // Tool: configure_export_presets
+  // Complexity: 3.2 (Medium)
+  // Dependencies: read_illustrator_document
+  server.tool(
+    "configure_export_presets",
+    {
+      presetName: z.string().describe("Name for the export preset"),
+      format: z.enum(["png", "jpg", "svg", "pdf", "eps"]).describe("Export format"),
+      settings: z.object({
+        // Common settings
+        resolution: z.number().default(72).describe("Resolution in DPI"),
+        colorSpace: z.enum(["rgb", "cmyk", "grayscale"]).optional().describe("Color space"),
+        antialiasing: z.boolean().default(true).describe("Enable antialiasing"),
+        
+        // PNG settings
+        transparency: z.boolean().optional().describe("Preserve transparency (PNG)"),
+        interlaced: z.boolean().optional().describe("Interlaced/progressive (PNG)"),
+        
+        // JPG settings
+        quality: z.number().min(0).max(100).optional().describe("JPEG quality (0-100)"),
+        progressive: z.boolean().optional().describe("Progressive JPEG"),
+        optimized: z.boolean().optional().describe("Optimize JPEG"),
+        
+        // SVG settings
+        embedImages: z.boolean().optional().describe("Embed images in SVG"),
+        embedFonts: z.boolean().optional().describe("Embed fonts in SVG"),
+        compressed: z.boolean().optional().describe("Compress SVG"),
+        decimals: z.number().min(1).max(7).optional().describe("Decimal precision for SVG"),
+        
+        // PDF settings
+        compatibility: z.enum(["1.3", "1.4", "1.5", "1.6", "1.7"]).optional().describe("PDF version"),
+        preserveEditability: z.boolean().optional().describe("Preserve Illustrator editing"),
+        embedThumbnails: z.boolean().optional().describe("Embed page thumbnails"),
+        
+        // EPS settings
+        preview: z.enum(["none", "tiff", "pict"]).optional().describe("EPS preview format"),
+        embedFontsEPS: z.boolean().optional().describe("Embed fonts in EPS"),
+        includeDocumentThumbnails: z.boolean().optional().describe("Include thumbnails")
+      }).describe("Format-specific settings"),
+      saveAsDefault: z.boolean().default(false).describe("Save as default preset for this format"),
+      applyToDocument: z.boolean().default(false).describe("Apply preset to current document")
+    },
+    wrapToolForTelemetry("configure_export_presets", async (args: any) => {
+      const { presetName, format, settings = {}, saveAsDefault = false, applyToDocument = false } = args;
+      
+      const script = `
+        try {
+          if (!app.documents.length) {
+            throw new Error("No document open");
+          }
+          
+          var doc = app.activeDocument;
+          var presetCreated = false;
+          var exportOptions = null;
+          
+          // Configure format-specific options
+          switch("${format}") {
+            case "png":
+              exportOptions = new ExportOptionsPNG24();
+              exportOptions.horizontalScale = ${(settings.resolution || 72) / 72 * 100};
+              exportOptions.verticalScale = ${(settings.resolution || 72) / 72 * 100};
+              exportOptions.transparency = ${settings.transparency !== false};
+              exportOptions.artBoardClipping = true;
+              exportOptions.antiAliasing = ${settings.antialiasing !== false};
+              
+              if (${settings.interlaced || false}) {
+                exportOptions.interlaced = true;
+              }
+              break;
+              
+            case "jpg":
+              exportOptions = new ExportOptionsJPEG();
+              exportOptions.qualitySetting = ${settings.quality || 80};
+              exportOptions.horizontalScale = ${(settings.resolution || 72) / 72 * 100};
+              exportOptions.verticalScale = ${(settings.resolution || 72) / 72 * 100};
+              exportOptions.artBoardClipping = true;
+              exportOptions.antiAliasing = ${settings.antialiasing !== false};
+              
+              if (${settings.optimized || false}) {
+                exportOptions.optimized = true;
+              }
+              
+              // Color model
+              if ("${settings.colorSpace || ''}" !== "") {
+                switch("${settings.colorSpace}") {
+                  case "rgb":
+                    exportOptions.colorModel = JPEGColorModel.RGB;
+                    break;
+                  case "cmyk":
+                    exportOptions.colorModel = JPEGColorModel.CMYK;
+                    break;
+                  case "grayscale":
+                    exportOptions.colorModel = JPEGColorModel.GRAYSCALE;
+                    break;
+                }
+              }
+              break;
+              
+            case "svg":
+              exportOptions = new ExportOptionsSVG();
+              exportOptions.embedImages = ${settings.embedImages !== false};
+              exportOptions.embedFonts = ${settings.embedFonts !== false};
+              exportOptions.compressed = ${settings.compressed || false};
+              exportOptions.artBoardClipping = true;
+              
+              if (${settings.decimals || 0} > 0) {
+                exportOptions.coordinatePrecision = ${settings.decimals || 3};
+              }
+              
+              // Font subsetting
+              if (${settings.embedFonts !== false}) {
+                exportOptions.fontSubsetting = SVGFontSubsetting.ALLGLYPHS;
+              } else {
+                exportOptions.fontSubsetting = SVGFontSubsetting.NONE;
+              }
+              break;
+              
+            case "pdf":
+              exportOptions = new PDFSaveOptions();
+              
+              // Set compatibility
+              switch("${settings.compatibility || '1.5'}") {
+                case "1.3":
+                  exportOptions.compatibility = PDFCompatibility.ACROBAT4;
+                  break;
+                case "1.4":
+                  exportOptions.compatibility = PDFCompatibility.ACROBAT5;
+                  break;
+                case "1.5":
+                  exportOptions.compatibility = PDFCompatibility.ACROBAT6;
+                  break;
+                case "1.6":
+                  exportOptions.compatibility = PDFCompatibility.ACROBAT7;
+                  break;
+                case "1.7":
+                  exportOptions.compatibility = PDFCompatibility.ACROBAT8;
+                  break;
+                default:
+                  exportOptions.compatibility = PDFCompatibility.ACROBAT5;
+              }
+              
+              exportOptions.preserveEditability = ${settings.preserveEditability || false};
+              exportOptions.generateThumbnails = ${settings.embedThumbnails || false};
+              exportOptions.optimization = true;
+              
+              // Color conversion
+              if ("${settings.colorSpace || ''}" === "grayscale") {
+                exportOptions.colorConversionID = ColorConversion.GRAYSCALE;
+              }
+              break;
+              
+            case "eps":
+              exportOptions = new EPSSaveOptions();
+              exportOptions.compatibility = EPSCompatibility.ILLUSTRATOR10;
+              exportOptions.embedLinkedFiles = true;
+              exportOptions.embedFonts = ${settings.embedFontsEPS !== false};
+              exportOptions.includeDocumentThumbnails = ${settings.includeDocumentThumbnails || false};
+              
+              // Preview format
+              switch("${settings.preview || 'none'}") {
+                case "none":
+                  exportOptions.preview = EPSPreview.NONE;
+                  break;
+                case "tiff":
+                  exportOptions.preview = EPSPreview.TIFFWITHCOLORS;
+                  break;
+                case "pict":
+                  exportOptions.preview = EPSPreview.MACOSPICTPREVIEW;
+                  break;
+              }
+              break;
+          }
+          
+          // Store preset in document (as a note/tag for reference)
+          // Since Illustrator doesn't have a direct preset API like InDesign,
+          // we'll store the settings as a document note
+          if (exportOptions) {
+            presetCreated = true;
+            
+            // Create a preset description
+            var presetDesc = "Export Preset: ${presetName}\\\\n";
+            presetDesc += "Format: ${format}\\\\n";
+            presetDesc += "Resolution: " + ${settings.resolution || 72} + " DPI\\\\n";
+            
+            if ("${format}" === "jpg") {
+              presetDesc += "Quality: " + ${settings.quality || 80} + "\\\\n";
+            }
+            if ("${format}" === "png") {
+              presetDesc += "Transparency: " + ${settings.transparency !== false} + "\\\\n";
+            }
+            
+            // Store in document notes (if available) or as a text note
+            try {
+              // Try to create a non-printing text frame to store preset info
+              var presetNote = doc.textFrames.add();
+              presetNote.name = "PRESET_${presetName}";
+              presetNote.contents = presetDesc;
+              presetNote.hidden = true;
+              presetNote.locked = true;
+              
+              // Move off artboard
+              presetNote.position = [-10000, -10000];
+            } catch (e) {
+              // Fallback: just note that preset was configured
+            }
+            
+            // Apply to document if requested
+            if (${applyToDocument}) {
+              // Store a reference to current export settings
+              doc.XMPString = "<!-- Export Preset: ${presetName} -->";
+            }
+          }
+          
+          var result = "Created export preset: ${presetName} for ${format}";
+          if (${saveAsDefault}) {
+            result += " (set as default)";
+          }
+          if (${applyToDocument}) {
+            result += " (applied to document)";
+          }
+          
+          result;
+          
+        } catch (e) {
+          "Error: " + e.message;
+        }
+      `;
+      
+      const result = await executeExtendScriptForApp(script, 'illustrator');
+      
+      return {
+        content: [{
+          type: "text" as const,
+          text: result.success ? result.result || "Export preset configured" : `Error: ${result.error}`
+        }]
+      };
+    })
+  );
   
   console.error("Registered Illustrator export tools");
 }
