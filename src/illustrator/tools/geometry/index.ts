@@ -1109,5 +1109,507 @@ export async function registerGeometryTools(server: McpServer): Promise<void> {
     })
   );
   
+  // Tool: duplicate_and_arrange
+  // Complexity: 3.0 (Medium)
+  // Dependencies: select_elements
+  server.tool(
+    "duplicate_and_arrange",
+    {
+      duplicateCount: z.number().min(1).max(100).describe("Number of duplicates to create"),
+      arrangement: z.enum(["linear", "circular", "grid", "spiral"]).describe("Arrangement pattern"),
+      spacing: z.object({
+        x: z.number().default(0).describe("Horizontal spacing"),
+        y: z.number().default(0).describe("Vertical spacing"),
+        angle: z.number().default(0).describe("Angle for circular/spiral arrangements"),
+        radius: z.number().default(100).describe("Radius for circular/spiral arrangements")
+      }).optional(),
+      transformEach: z.object({
+        rotate: z.number().default(0).describe("Rotation per duplicate"),
+        scale: z.number().default(100).describe("Scale percentage per duplicate"),
+        opacity: z.number().default(100).describe("Opacity percentage per duplicate")
+      }).optional()
+    },
+    wrapToolForTelemetry("duplicate_and_arrange", async (args: any) => {
+      const { duplicateCount, arrangement, spacing = {}, transformEach = {} } = args;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var count = ${duplicateCount};
+          var arrangement = ${JSON.stringify(arrangement)};
+          var spacing = ${JSON.stringify(spacing)};
+          var transform = ${JSON.stringify(transformEach)};
+          
+          if (app.selection.length === 0) {
+            throw new Error("No objects selected");
+          }
+          
+          var duplicates = [];
+          var original = app.selection[0];
+          
+          for (var i = 1; i <= count; i++) {
+            var dup = original.duplicate();
+            var x = 0, y = 0;
+            
+            switch (arrangement) {
+              case "linear":
+                x = i * (spacing.x || 20);
+                y = i * (spacing.y || 0);
+                break;
+              case "circular":
+                var angle = (i * 360 / count) * Math.PI / 180;
+                x = (spacing.radius || 100) * Math.cos(angle);
+                y = (spacing.radius || 100) * Math.sin(angle);
+                break;
+              case "grid":
+                var cols = Math.ceil(Math.sqrt(count));
+                x = (i % cols) * (spacing.x || 20);
+                y = Math.floor(i / cols) * (spacing.y || 20);
+                break;
+              case "spiral":
+                var spiralAngle = i * (spacing.angle || 30) * Math.PI / 180;
+                var spiralRadius = (spacing.radius || 10) * i / count;
+                x = spiralRadius * Math.cos(spiralAngle);
+                y = spiralRadius * Math.sin(spiralAngle);
+                break;
+            }
+            
+            dup.translate(x, y);
+            
+            if (transform.rotate) {
+              dup.rotate(transform.rotate * i);
+            }
+            if (transform.scale && transform.scale !== 100) {
+              var scaleFactor = Math.pow(transform.scale / 100, i);
+              var scaleMatrix = app.getScaleMatrix(scaleFactor * 100, scaleFactor * 100);
+              dup.transform(scaleMatrix, true, false, true, false, 0, Transformation.CENTER);
+            }
+            if (transform.opacity && transform.opacity !== 100) {
+              dup.opacity = Math.max(0, transform.opacity - (i * (100 - transform.opacity) / count));
+            }
+            
+            duplicates.push(dup);
+          }
+          
+          JSON.stringify({
+            success: true,
+            duplicatesCreated: duplicates.length,
+            arrangement: arrangement,
+            message: "Created " + duplicates.length + " duplicates in " + arrangement + " arrangement"
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  // Tool: auto_trace_image
+  // Complexity: 3.5 (Medium-High)
+  // Dependencies: None
+  server.tool(
+    "auto_trace_image",
+    {
+      tracePreset: z.enum(["default", "high_fidelity", "low_fidelity", "3_colors", "6_colors", "16_colors", "grayscale", "black_and_white", "outline"]).default("default"),
+      customOptions: z.object({
+        threshold: z.number().min(1).max(255).optional(),
+        paths: z.number().min(1).max(100).optional(),
+        corners: z.number().min(1).max(100).optional(),
+        noise: z.number().min(1).max(100).optional(),
+        method: z.enum(["abutting", "overlapping"]).optional(),
+        fills: z.boolean().default(true),
+        strokes: z.boolean().default(false),
+        snapCurves: z.boolean().default(true),
+        ignoreWhite: z.boolean().default(true)
+      }).optional(),
+      expandAfterTrace: z.boolean().default(false).describe("Expand the traced result")
+    },
+    wrapToolForTelemetry("auto_trace_image", async (args: any) => {
+      const { tracePreset = "default", customOptions = {}, expandAfterTrace = false } = args;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var preset = ${JSON.stringify(tracePreset)};
+          var options = ${JSON.stringify(customOptions)};
+          var expand = ${expandAfterTrace};
+          
+          // Get selected raster image
+          var rasterItem = null;
+          for (var i = 0; i < app.selection.length; i++) {
+            if (app.selection[i].typename === "RasterItem") {
+              rasterItem = app.selection[i];
+              break;
+            } else if (app.selection[i].typename === "PlacedItem") {
+              rasterItem = app.selection[i];
+              break;
+            }
+          }
+          
+          if (!rasterItem) {
+            throw new Error("Please select a raster image to trace");
+          }
+          
+          // Create tracing object
+          var tracing = rasterItem.trace();
+          
+          // Apply preset or custom options
+          var tracingOptions = tracing.tracingOptions;
+          
+          switch (preset) {
+            case "high_fidelity":
+              tracingOptions.threshold = 128;
+              tracingOptions.pathFidelity = 95;
+              tracingOptions.cornerFidelity = 90;
+              break;
+            case "low_fidelity":
+              tracingOptions.threshold = 128;
+              tracingOptions.pathFidelity = 50;
+              tracingOptions.cornerFidelity = 50;
+              break;
+            case "3_colors":
+              tracingOptions.maxColors = 3;
+              break;
+            case "6_colors":
+              tracingOptions.maxColors = 6;
+              break;
+            case "16_colors":
+              tracingOptions.maxColors = 16;
+              break;
+            case "grayscale":
+              tracingOptions.colorMode = TracingModeType.TRACINGMODEGRAYSCALE;
+              break;
+            case "black_and_white":
+              tracingOptions.colorMode = TracingModeType.TRACINGMODEBLACKANDWHITE;
+              tracingOptions.threshold = options.threshold || 128;
+              break;
+            case "outline":
+              tracingOptions.strokes = true;
+              tracingOptions.fills = false;
+              break;
+          }
+          
+          // Apply custom options
+          if (options.threshold) tracingOptions.threshold = options.threshold;
+          if (options.paths) tracingOptions.pathFidelity = options.paths;
+          if (options.corners) tracingOptions.cornerFidelity = options.corners;
+          if (options.noise) tracingOptions.noiseFidelity = options.noise;
+          if (options.fills !== undefined) tracingOptions.fills = options.fills;
+          if (options.strokes !== undefined) tracingOptions.strokes = options.strokes;
+          if (options.snapCurves !== undefined) tracingOptions.snapCurvesToLines = options.snapCurves;
+          if (options.ignoreWhite !== undefined) tracingOptions.ignoreWhite = options.ignoreWhite;
+          
+          // Expand if requested
+          if (expand) {
+            var expandedItem = tracing.expandTracing();
+            
+            JSON.stringify({
+              success: true,
+              traced: true,
+              expanded: true,
+              itemType: expandedItem.typename,
+              preset: preset,
+              message: "Image traced and expanded successfully"
+            });
+          } else {
+            JSON.stringify({
+              success: true,
+              traced: true,
+              expanded: false,
+              preset: preset,
+              message: "Image traced successfully"
+            });
+          }
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  // Tool: simplify_path
+  // Complexity: 2.8 (Low-Medium)
+  // Dependencies: None
+  server.tool(
+    "simplify_path",
+    {
+      tolerance: z.number().min(0).max(100).default(2).describe("Simplification tolerance"),
+      angleThreshold: z.number().min(0).max(180).default(0).describe("Angle threshold for corners"),
+      options: z.object({
+        removeRedundantPoints: z.boolean().default(true),
+        straightLines: z.boolean().default(true).describe("Convert to straight lines where possible"),
+        showOriginal: z.boolean().default(false).describe("Keep original for comparison")
+      }).optional(),
+      target: z.enum(["selection", "all_paths", "layer"]).default("selection")
+    },
+    wrapToolForTelemetry("simplify_path", async (args: any) => {
+      const { tolerance = 2, angleThreshold = 0, options = {}, target = "selection" } = args;
+      const {
+        removeRedundantPoints = true,
+        straightLines = true,
+        showOriginal = false
+      } = options;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var tolerance = ${tolerance};
+          var angleThreshold = ${angleThreshold};
+          var target = ${JSON.stringify(target)};
+          
+          var paths = [];
+          
+          switch (target) {
+            case "selection":
+              for (var i = 0; i < app.selection.length; i++) {
+                if (app.selection[i].typename === "PathItem" || 
+                    app.selection[i].typename === "CompoundPathItem") {
+                  paths.push(app.selection[i]);
+                }
+              }
+              break;
+            case "all_paths":
+              for (var i = 0; i < doc.pathItems.length; i++) {
+                paths.push(doc.pathItems[i]);
+              }
+              break;
+            case "layer":
+              var layer = doc.activeLayer;
+              for (var i = 0; i < layer.pathItems.length; i++) {
+                paths.push(layer.pathItems[i]);
+              }
+              break;
+          }
+          
+          if (paths.length === 0) {
+            throw new Error("No paths found to simplify");
+          }
+          
+          var simplifiedCount = 0;
+          var totalPointsBefore = 0;
+          var totalPointsAfter = 0;
+          
+          for (var i = 0; i < paths.length; i++) {
+            var path = paths[i];
+            
+            if (path.typename === "PathItem") {
+              var pointsBefore = path.pathPoints.length;
+              totalPointsBefore += pointsBefore;
+              
+              // Keep original if requested
+              if (${showOriginal}) {
+                var originalCopy = path.duplicate();
+                originalCopy.filled = false;
+                originalCopy.stroked = true;
+                originalCopy.strokeWidth = 0.5;
+                var gray = new GrayColor();
+                gray.gray = 50;
+                originalCopy.strokeColor = gray;
+              }
+              
+              // Simplify the path
+              path.simplify(tolerance, angleThreshold, ${straightLines}, ${removeRedundantPoints});
+              
+              var pointsAfter = path.pathPoints.length;
+              totalPointsAfter += pointsAfter;
+              simplifiedCount++;
+            }
+          }
+          
+          var reduction = totalPointsBefore > 0 ? 
+            Math.round((1 - totalPointsAfter / totalPointsBefore) * 100) : 0;
+          
+          JSON.stringify({
+            success: true,
+            pathsSimplified: simplifiedCount,
+            pointsBefore: totalPointsBefore,
+            pointsAfter: totalPointsAfter,
+            reduction: reduction + "%",
+            message: "Simplified " + simplifiedCount + " paths, reduced points by " + reduction + "%"
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
+  // Tool: create_guides
+  // Complexity: 2.5 (Low-Medium)
+  // Dependencies: None
+  server.tool(
+    "create_guides",
+    {
+      guideType: z.enum(["margins", "grid", "columns", "center", "thirds", "golden"]).describe("Type of guides to create"),
+      specifications: z.object({
+        margin: z.number().default(36).describe("Margin size in points"),
+        columns: z.number().default(3).describe("Number of columns"),
+        gutter: z.number().default(12).describe("Gutter width"),
+        gridSpacing: z.object({
+          horizontal: z.number().default(50),
+          vertical: z.number().default(50)
+        }).optional()
+      }).optional(),
+      scope: z.enum(["artboard", "selection", "document"]).default("artboard"),
+      clearExisting: z.boolean().default(false).describe("Clear existing guides first")
+    },
+    wrapToolForTelemetry("create_guides", async (args: any) => {
+      const { guideType, specifications = {}, scope = "artboard", clearExisting = false } = args;
+      const {
+        margin = 36,
+        columns = 3,
+        gutter = 12,
+        gridSpacing = { horizontal: 50, vertical: 50 }
+      } = specifications;
+      
+      const script = `
+        try {
+          var doc = app.activeDocument;
+          var guideType = ${JSON.stringify(guideType)};
+          var scope = ${JSON.stringify(scope)};
+          
+          // Clear existing guides if requested
+          if (${clearExisting}) {
+            while (doc.pathItems.length > 0) {
+              var item = doc.pathItems[0];
+              if (item.guides) {
+                item.remove();
+              } else {
+                break;
+              }
+            }
+          }
+          
+          // Determine bounds
+          var bounds;
+          switch (scope) {
+            case "artboard":
+              var artboard = doc.artboards[doc.artboards.getActiveArtboardIndex()];
+              bounds = artboard.artboardRect;
+              break;
+            case "selection":
+              if (app.selection.length === 0) {
+                throw new Error("No objects selected");
+              }
+              // Calculate selection bounds
+              bounds = app.selection[0].geometricBounds;
+              for (var i = 1; i < app.selection.length; i++) {
+                var itemBounds = app.selection[i].geometricBounds;
+                bounds[0] = Math.min(bounds[0], itemBounds[0]);
+                bounds[1] = Math.max(bounds[1], itemBounds[1]);
+                bounds[2] = Math.max(bounds[2], itemBounds[2]);
+                bounds[3] = Math.min(bounds[3], itemBounds[3]);
+              }
+              break;
+            case "document":
+              bounds = doc.visibleBounds;
+              break;
+          }
+          
+          var left = bounds[0];
+          var top = bounds[1];
+          var right = bounds[2];
+          var bottom = bounds[3];
+          var width = right - left;
+          var height = top - bottom;
+          
+          var guidesCreated = 0;
+          
+          function createGuide(x1, y1, x2, y2) {
+            var guide = doc.pathItems.add();
+            guide.setEntirePath([[x1, y1], [x2, y2]]);
+            guide.guides = true;
+            guide.filled = false;
+            guide.stroked = false;
+            guidesCreated++;
+          }
+          
+          switch (guideType) {
+            case "margins":
+              // Create margin guides
+              createGuide(left + ${margin}, top, left + ${margin}, bottom); // Left
+              createGuide(right - ${margin}, top, right - ${margin}, bottom); // Right
+              createGuide(left, top - ${margin}, right, top - ${margin}); // Top
+              createGuide(left, bottom + ${margin}, right, bottom + ${margin}); // Bottom
+              break;
+              
+            case "grid":
+              // Create grid guides
+              var hSpacing = ${gridSpacing.horizontal};
+              var vSpacing = ${gridSpacing.vertical};
+              
+              for (var x = left + hSpacing; x < right; x += hSpacing) {
+                createGuide(x, top, x, bottom);
+              }
+              for (var y = bottom + vSpacing; y < top; y += vSpacing) {
+                createGuide(left, y, right, y);
+              }
+              break;
+              
+            case "columns":
+              // Create column guides
+              var colWidth = (width - (${gutter} * (${columns} - 1))) / ${columns};
+              var x = left;
+              
+              for (var i = 0; i < ${columns}; i++) {
+                createGuide(x, top, x, bottom);
+                x += colWidth;
+                createGuide(x, top, x, bottom);
+                x += ${gutter};
+              }
+              break;
+              
+            case "center":
+              // Create center guides
+              var centerX = left + width / 2;
+              var centerY = bottom + height / 2;
+              createGuide(centerX, top, centerX, bottom);
+              createGuide(left, centerY, right, centerY);
+              break;
+              
+            case "thirds":
+              // Rule of thirds guides
+              var thirdX = width / 3;
+              var thirdY = height / 3;
+              createGuide(left + thirdX, top, left + thirdX, bottom);
+              createGuide(left + thirdX * 2, top, left + thirdX * 2, bottom);
+              createGuide(left, bottom + thirdY, right, bottom + thirdY);
+              createGuide(left, bottom + thirdY * 2, right, bottom + thirdY * 2);
+              break;
+              
+            case "golden":
+              // Golden ratio guides
+              var goldenRatio = 1.618;
+              var goldenX = width / goldenRatio;
+              var goldenY = height / goldenRatio;
+              createGuide(left + goldenX, top, left + goldenX, bottom);
+              createGuide(right - goldenX, top, right - goldenX, bottom);
+              createGuide(left, top - goldenY, right, top - goldenY);
+              createGuide(left, bottom + goldenY, right, bottom + goldenY);
+              break;
+          }
+          
+          JSON.stringify({
+            success: true,
+            guidesCreated: guidesCreated,
+            guideType: guideType,
+            scope: scope,
+            message: "Created " + guidesCreated + " guides"
+          });
+        } catch (e) {
+          JSON.stringify({ error: e.toString(), line: e.line });
+        }
+      `;
+      
+      return executeExtendScriptForApp(script, "illustrator");
+    })
+  );
+
   console.error("Registered Illustrator geometry tools");
 }
