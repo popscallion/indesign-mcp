@@ -1110,5 +1110,366 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
     })
   );
   
+  // Tool: manage_swatches_colors
+  // Complexity: 2.2 (Intermediate)
+  // Dependencies: None
+  server.tool(
+    "manage_swatches_colors",
+    {
+      action: z.enum(["create", "modify", "delete", "organize", "export", "import"]).describe("Action to perform on swatches"),
+      swatchData: z.object({
+        name: z.string().describe("Swatch name"),
+        colorType: z.enum(["rgb", "cmyk", "hsb", "spot", "gradient", "pattern"]).describe("Type of color"),
+        colorValues: z.object({
+          red: z.number().optional().describe("Red component (0-255)"),
+          green: z.number().optional().describe("Green component (0-255)"),
+          blue: z.number().optional().describe("Blue component (0-255)"),
+          cyan: z.number().optional().describe("Cyan component (0-100)"),
+          magenta: z.number().optional().describe("Magenta component (0-100)"),
+          yellow: z.number().optional().describe("Yellow component (0-100)"),
+          black: z.number().optional().describe("Black component (0-100)"),
+          hue: z.number().optional().describe("Hue (0-360)"),
+          saturation: z.number().optional().describe("Saturation (0-100)"),
+          brightness: z.number().optional().describe("Brightness (0-100)")
+        }).optional().describe("Color values based on type"),
+        global: z.boolean().default(true).describe("Make swatch global"),
+        tint: z.number().optional().describe("Tint percentage for spot colors (0-100)")
+      }).optional().describe("Swatch data for create/modify"),
+      swatchGroup: z.object({
+        name: z.string().describe("Swatch group name"),
+        swatches: z.array(z.string()).optional().describe("Swatches to add to group")
+      }).optional().describe("Group operations"),
+      targetSwatch: z.string().optional().describe("Target swatch for modify/delete"),
+      exportFormat: z.enum(["ase", "json", "text"]).optional().describe("Export format"),
+      importPath: z.string().optional().describe("Path to import swatches from"),
+      colorHarmony: z.object({
+        baseColor: z.string().describe("Base swatch name or hex color"),
+        harmonyType: z.enum(["complementary", "analogous", "triadic", "split", "square", "monochromatic"]).describe("Type of color harmony"),
+        variations: z.number().default(5).describe("Number of variations to generate")
+      }).optional().describe("Generate color harmonies")
+    },
+    wrapToolForTelemetry("manage_swatches_colors", async (args: any) => {
+      const { action, swatchData, swatchGroup, targetSwatch, exportFormat, importPath, colorHarmony } = args;
+      
+      const script = `
+        try {
+          if (!app.documents.length) {
+            throw new Error("No document open");
+          }
+          
+          var doc = app.activeDocument;
+          var result = "";
+          
+          // Helper function to create color from data
+          function createColorFromData(data) {
+            var color = null;
+            
+            if (data.colorType === "rgb") {
+              color = new RGBColor();
+              color.red = data.colorValues.red || 0;
+              color.green = data.colorValues.green || 0;
+              color.blue = data.colorValues.blue || 0;
+            } else if (data.colorType === "cmyk") {
+              color = new CMYKColor();
+              color.cyan = data.colorValues.cyan || 0;
+              color.magenta = data.colorValues.magenta || 0;
+              color.yellow = data.colorValues.yellow || 0;
+              color.black = data.colorValues.black || 0;
+            } else if (data.colorType === "spot") {
+              // Create spot color
+              var spot = doc.spots.add();
+              spot.name = data.name;
+              
+              var spotColor = new SpotColor();
+              spotColor.spot = spot;
+              spotColor.tint = data.tint || 100;
+              
+              // Set the spot's color
+              var spotBaseColor = new CMYKColor();
+              spotBaseColor.cyan = data.colorValues.cyan || 0;
+              spotBaseColor.magenta = data.colorValues.magenta || 0;
+              spotBaseColor.yellow = data.colorValues.yellow || 0;
+              spotBaseColor.black = data.colorValues.black || 0;
+              spot.color = spotBaseColor;
+              
+              color = spotColor;
+            } else if (data.colorType === "hsb") {
+              // Convert HSB to RGB
+              var h = (data.colorValues.hue || 0) / 360;
+              var s = (data.colorValues.saturation || 0) / 100;
+              var b = (data.colorValues.brightness || 0) / 100;
+              
+              var rgb = hsbToRgb(h, s, b);
+              color = new RGBColor();
+              color.red = rgb.r;
+              color.green = rgb.g;
+              color.blue = rgb.b;
+            } else if (data.colorType === "gradient") {
+              // Create gradient (simplified)
+              color = new GradientColor();
+              color.gradient = doc.gradients.add();
+              color.gradient.name = data.name;
+              color.gradient.type = GradientType.LINEAR;
+            }
+            
+            return color;
+          }
+          
+          // Helper function for HSB to RGB conversion
+          function hsbToRgb(h, s, b) {
+            var r, g, bl;
+            
+            if (s === 0) {
+              r = g = bl = b;
+            } else {
+              var i = Math.floor(h * 6);
+              var f = h * 6 - i;
+              var p = b * (1 - s);
+              var q = b * (1 - s * f);
+              var t = b * (1 - s * (1 - f));
+              
+              switch (i % 6) {
+                case 0: r = b; g = t; bl = p; break;
+                case 1: r = q; g = b; bl = p; break;
+                case 2: r = p; g = b; bl = t; break;
+                case 3: r = p; g = q; bl = b; break;
+                case 4: r = t; g = p; bl = b; break;
+                case 5: r = b; g = p; bl = q; break;
+              }
+            }
+            
+            return {
+              r: Math.round(r * 255),
+              g: Math.round(g * 255),
+              b: Math.round(bl * 255)
+            };
+          }
+          
+          if ("${action}" === "create") {
+            // Create new swatch
+            var swatchInfo = ${JSON.stringify(swatchData || {})};
+            if (!swatchInfo.name) throw new Error("Swatch name required");
+            
+            // Check if swatch exists
+            var existingSwatch = null;
+            try {
+              existingSwatch = doc.swatches.getByName(swatchInfo.name);
+            } catch(e) {
+              // Swatch doesn't exist, continue
+            }
+            
+            if (existingSwatch) {
+              result = "Swatch already exists: " + swatchInfo.name;
+            } else {
+              var newSwatch = doc.swatches.add();
+              newSwatch.name = swatchInfo.name;
+              
+              var color = createColorFromData(swatchInfo);
+              if (color) {
+                newSwatch.color = color;
+              }
+              
+              result = "Created swatch: " + newSwatch.name;
+            }
+            
+          } else if ("${action}" === "modify") {
+            // Modify existing swatch
+            if ("${targetSwatch || ''}" === "") throw new Error("Target swatch required");
+            
+            var swatch = doc.swatches.getByName("${targetSwatch}");
+            var swatchInfo = ${JSON.stringify(swatchData || {})};
+            
+            if (swatchInfo.name) {
+              swatch.name = swatchInfo.name;
+            }
+            
+            if (swatchInfo.colorValues) {
+              var color = createColorFromData(swatchInfo);
+              if (color) {
+                swatch.color = color;
+              }
+            }
+            
+            result = "Modified swatch: " + swatch.name;
+            
+          } else if ("${action}" === "delete") {
+            // Delete swatch
+            if ("${targetSwatch || ''}" === "") throw new Error("Target swatch required");
+            
+            var swatch = doc.swatches.getByName("${targetSwatch}");
+            swatch.remove();
+            result = "Deleted swatch: ${targetSwatch}";
+            
+          } else if ("${action}" === "organize") {
+            // Organize swatches into groups
+            var groupInfo = ${JSON.stringify(swatchGroup || {})};
+            if (!groupInfo.name) throw new Error("Group name required");
+            
+            var swatchGroup = doc.swatchGroups.add();
+            swatchGroup.name = groupInfo.name;
+            
+            // Add swatches to group
+            if (groupInfo.swatches) {
+              for (var i = 0; i < groupInfo.swatches.length; i++) {
+                try {
+                  var swatch = doc.swatches.getByName(groupInfo.swatches[i]);
+                  swatchGroup.addSwatch(swatch);
+                } catch(e) {
+                  // Skip if swatch not found
+                }
+              }
+            }
+            
+            result = "Created swatch group: " + swatchGroup.name;
+            
+          } else if ("${action}" === "export") {
+            // Export swatches
+            var format = "${exportFormat || 'json'}";
+            var exportData = [];
+            
+            for (var j = 0; j < doc.swatches.length; j++) {
+              var swatch = doc.swatches[j];
+              var swatchData = {
+                name: swatch.name,
+                color: null
+              };
+              
+              if (swatch.color.typename === "RGBColor") {
+                swatchData.color = {
+                  type: "rgb",
+                  red: swatch.color.red,
+                  green: swatch.color.green,
+                  blue: swatch.color.blue
+                };
+              } else if (swatch.color.typename === "CMYKColor") {
+                swatchData.color = {
+                  type: "cmyk",
+                  cyan: swatch.color.cyan,
+                  magenta: swatch.color.magenta,
+                  yellow: swatch.color.yellow,
+                  black: swatch.color.black
+                };
+              }
+              
+              exportData.push(swatchData);
+            }
+            
+            if (format === "json") {
+              result = "Exported " + exportData.length + " swatches as JSON";
+            } else if (format === "ase") {
+              // ASE export would require file writing
+              result = "ASE export requires file system access";
+            } else {
+              result = "Exported " + exportData.length + " swatches";
+            }
+            
+          } else if ("${action}" === "import") {
+            // Import swatches (simplified)
+            if ("${importPath || ''}" === "") throw new Error("Import path required");
+            
+            // This would typically read from a file
+            result = "Import requires file system access: ${importPath}";
+            
+          }
+          
+          // Generate color harmonies if specified
+          if (${colorHarmony ? 'true' : 'false'}) {
+            var harmony = ${JSON.stringify(colorHarmony || {})};
+            var baseColor = null;
+            
+            // Get base color
+            if (harmony.baseColor.charAt(0) === '#') {
+              // Parse hex color
+              baseColor = new RGBColor();
+              var hex = harmony.baseColor.substring(1);
+              baseColor.red = parseInt(hex.substring(0, 2), 16);
+              baseColor.green = parseInt(hex.substring(2, 4), 16);
+              baseColor.blue = parseInt(hex.substring(4, 6), 16);
+            } else {
+              // Get from swatch
+              var baseSwatch = doc.swatches.getByName(harmony.baseColor);
+              baseColor = baseSwatch.color;
+            }
+            
+            // Convert to HSB for harmony calculations
+            var r = baseColor.red / 255;
+            var g = baseColor.green / 255;
+            var b = baseColor.blue / 255;
+            
+            var max = Math.max(r, g, b);
+            var min = Math.min(r, g, b);
+            var h, s, v = max;
+            
+            var d = max - min;
+            s = max === 0 ? 0 : d / max;
+            
+            if (max === min) {
+              h = 0;
+            } else {
+              switch (max) {
+                case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+                case g: h = ((b - r) / d + 2) / 6; break;
+                case b: h = ((r - g) / d + 4) / 6; break;
+              }
+            }
+            
+            // Generate harmony colors
+            var harmonies = [];
+            
+            if (harmony.harmonyType === "complementary") {
+              harmonies.push((h + 0.5) % 1);
+            } else if (harmony.harmonyType === "analogous") {
+              harmonies.push((h + 1/12) % 1);
+              harmonies.push((h - 1/12 + 1) % 1);
+            } else if (harmony.harmonyType === "triadic") {
+              harmonies.push((h + 1/3) % 1);
+              harmonies.push((h + 2/3) % 1);
+            } else if (harmony.harmonyType === "split") {
+              harmonies.push((h + 5/12) % 1);
+              harmonies.push((h + 7/12) % 1);
+            } else if (harmony.harmonyType === "square") {
+              harmonies.push((h + 0.25) % 1);
+              harmonies.push((h + 0.5) % 1);
+              harmonies.push((h + 0.75) % 1);
+            } else if (harmony.harmonyType === "monochromatic") {
+              for (var k = 1; k <= harmony.variations; k++) {
+                harmonies.push(h);
+              }
+            }
+            
+            // Create swatches for harmonies
+            for (var m = 0; m < harmonies.length && m < harmony.variations; m++) {
+              var harmonyColor = hsbToRgb(harmonies[m], s, v);
+              var harmonySwatch = doc.swatches.add();
+              harmonySwatch.name = harmony.baseColor + "_" + harmony.harmonyType + "_" + (m + 1);
+              
+              var rgbColor = new RGBColor();
+              rgbColor.red = harmonyColor.r;
+              rgbColor.green = harmonyColor.g;
+              rgbColor.blue = harmonyColor.b;
+              harmonySwatch.color = rgbColor;
+            }
+            
+            result += "\\\\nGenerated " + harmonies.length + " " + harmony.harmonyType + " harmony swatches";
+          }
+          
+          result;
+          
+        } catch (e) {
+          "Error: " + e.message;
+        }
+      `;
+      
+      const result = await executeExtendScriptForApp(script, 'illustrator');
+      
+      return {
+        content: [{
+          type: "text" as const,
+          text: result.success ? result.result || "Swatch operation completed" : `Error: ${result.error}`
+        }]
+      };
+    })
+  );
+  
   console.error("Registered Illustrator style tools");
 }

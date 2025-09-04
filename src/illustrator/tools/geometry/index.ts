@@ -845,5 +845,269 @@ export async function registerGeometryTools(server: McpServer): Promise<void> {
     })
   );
   
+  // Tool: create_advanced_path
+  // Complexity: 2.4 (Intermediate)
+  // Dependencies: None
+  server.tool(
+    "create_advanced_path",
+    {
+      pathType: z.enum(["bezier", "compound", "spiral", "wave", "custom"]).describe("Type of advanced path to create"),
+      points: z.array(z.object({
+        x: z.number().describe("X coordinate"),
+        y: z.number().describe("Y coordinate"),
+        leftHandle: z.object({
+          x: z.number().describe("Left control handle X offset"),
+          y: z.number().describe("Left control handle Y offset")
+        }).optional().describe("Left bezier handle"),
+        rightHandle: z.object({
+          x: z.number().describe("Right control handle X offset"),
+          y: z.number().describe("Right control handle Y offset")
+        }).optional().describe("Right bezier handle"),
+        pointType: z.enum(["corner", "smooth"]).optional().describe("Point type")
+      })).optional().describe("Control points for bezier/custom paths"),
+      spiralSettings: z.object({
+        centerX: z.number().describe("Center X coordinate"),
+        centerY: z.number().describe("Center Y coordinate"),
+        radius: z.number().describe("Starting radius"),
+        winds: z.number().describe("Number of spiral winds"),
+        decay: z.number().default(0.9).describe("Spiral decay rate (0-1)")
+      }).optional().describe("Settings for spiral path"),
+      waveSettings: z.object({
+        startX: z.number().describe("Starting X coordinate"),
+        startY: z.number().describe("Starting Y coordinate"),
+        length: z.number().describe("Total wave length"),
+        amplitude: z.number().describe("Wave amplitude"),
+        frequency: z.number().describe("Wave frequency"),
+        phase: z.number().default(0).describe("Phase shift")
+      }).optional().describe("Settings for wave path"),
+      pathOperations: z.array(z.object({
+        operation: z.enum(["unite", "intersect", "exclude", "minus"]).describe("Boolean operation"),
+        targetPath: z.number().describe("Index of target path for operation")
+      })).optional().describe("Boolean operations to apply"),
+      closed: z.boolean().default(true).describe("Whether the path should be closed"),
+      style: z.object({
+        fill: z.string().optional().describe("Fill color"),
+        stroke: z.string().optional().describe("Stroke color"),
+        strokeWidth: z.number().optional().describe("Stroke width"),
+        opacity: z.number().optional().describe("Path opacity (0-100)")
+      }).optional().describe("Path styling")
+    },
+    wrapToolForTelemetry("create_advanced_path", async (args: any) => {
+      const { pathType, points = [], spiralSettings, waveSettings, pathOperations = [], closed = true, style = {} } = args;
+      
+      const script = `
+        try {
+          if (!app.documents.length) {
+            throw new Error("No document open");
+          }
+          
+          var doc = app.activeDocument;
+          var path = null;
+          
+          if ("${pathType}" === "bezier" || "${pathType}" === "custom") {
+            // Create bezier or custom path from points
+            path = doc.pathItems.add();
+            
+            var pointsData = ${JSON.stringify(points)};
+            for (var i = 0; i < pointsData.length; i++) {
+              var pt = pointsData[i];
+              var pathPoint = path.pathPoints.add();
+              
+              pathPoint.anchor = [pt.x, pt.y];
+              
+              if (pt.leftHandle) {
+                pathPoint.leftDirection = [pt.x + pt.leftHandle.x, pt.y + pt.leftHandle.y];
+              } else {
+                pathPoint.leftDirection = pathPoint.anchor;
+              }
+              
+              if (pt.rightHandle) {
+                pathPoint.rightDirection = [pt.x + pt.rightHandle.x, pt.y + pt.rightHandle.y];
+              } else {
+                pathPoint.rightDirection = pathPoint.anchor;
+              }
+              
+              pathPoint.pointType = (pt.pointType === "smooth") ? 
+                PointType.SMOOTH : PointType.CORNER;
+            }
+            
+            path.closed = ${closed};
+            
+          } else if ("${pathType}" === "spiral") {
+            // Create spiral path
+            var spiral = ${JSON.stringify(spiralSettings || {})};
+            if (!spiral.centerX) throw new Error("Spiral settings required");
+            
+            path = doc.pathItems.add();
+            var winds = spiral.winds || 3;
+            var decay = spiral.decay || 0.9;
+            var pointsPerWind = 20;
+            var totalPoints = winds * pointsPerWind;
+            
+            for (var j = 0; j <= totalPoints; j++) {
+              var angle = (j / pointsPerWind) * Math.PI * 2;
+              var radius = spiral.radius * Math.pow(decay, j / pointsPerWind);
+              
+              var x = spiral.centerX + radius * Math.cos(angle);
+              var y = spiral.centerY + radius * Math.sin(angle);
+              
+              var pathPoint = path.pathPoints.add();
+              pathPoint.anchor = [x, y];
+              
+              // Calculate smooth handles for spiral
+              var handleLength = radius * 0.3;
+              var handleAngle = angle + Math.PI / 2;
+              
+              pathPoint.leftDirection = [
+                x - handleLength * Math.cos(handleAngle),
+                y - handleLength * Math.sin(handleAngle)
+              ];
+              pathPoint.rightDirection = [
+                x + handleLength * Math.cos(handleAngle),
+                y + handleLength * Math.sin(handleAngle)
+              ];
+              pathPoint.pointType = PointType.SMOOTH;
+            }
+            
+            path.closed = false;
+            
+          } else if ("${pathType}" === "wave") {
+            // Create wave path
+            var wave = ${JSON.stringify(waveSettings || {})};
+            if (!wave.startX) throw new Error("Wave settings required");
+            
+            path = doc.pathItems.add();
+            var segments = 50;
+            var phase = wave.phase || 0;
+            
+            for (var k = 0; k <= segments; k++) {
+              var t = k / segments;
+              var x = wave.startX + t * wave.length;
+              var y = wave.startY + wave.amplitude * Math.sin(2 * Math.PI * wave.frequency * t + phase);
+              
+              var pathPoint = path.pathPoints.add();
+              pathPoint.anchor = [x, y];
+              
+              // Calculate smooth handles for wave
+              if (k > 0 && k < segments) {
+                var dx = wave.length / segments;
+                var dy = wave.amplitude * 2 * Math.PI * wave.frequency * 
+                        Math.cos(2 * Math.PI * wave.frequency * t + phase) / segments;
+                var handleLength = Math.sqrt(dx * dx + dy * dy) * 0.3;
+                var handleAngle = Math.atan2(dy, dx);
+                
+                pathPoint.leftDirection = [
+                  x - handleLength * Math.cos(handleAngle),
+                  y - handleLength * Math.sin(handleAngle)
+                ];
+                pathPoint.rightDirection = [
+                  x + handleLength * Math.cos(handleAngle),
+                  y + handleLength * Math.sin(handleAngle)
+                ];
+                pathPoint.pointType = PointType.SMOOTH;
+              } else {
+                pathPoint.leftDirection = pathPoint.anchor;
+                pathPoint.rightDirection = pathPoint.anchor;
+                pathPoint.pointType = PointType.CORNER;
+              }
+            }
+            
+            path.closed = false;
+            
+          } else if ("${pathType}" === "compound") {
+            // Create compound path
+            var compound = doc.compoundPathItems.add();
+            
+            // Add multiple subpaths
+            var subPath1 = compound.pathItems.add();
+            subPath1.setEntirePath([
+              [100, 100], [200, 100], [200, 200], [100, 200]
+            ]);
+            subPath1.closed = true;
+            
+            var subPath2 = compound.pathItems.add();
+            subPath2.setEntirePath([
+              [125, 125], [175, 125], [175, 175], [125, 175]
+            ]);
+            subPath2.closed = true;
+            
+            path = compound;
+          }
+          
+          // Apply boolean operations if specified
+          if (${pathOperations.length} > 0 && path) {
+            var operations = ${JSON.stringify(pathOperations)};
+            for (var op = 0; op < operations.length; op++) {
+              var operation = operations[op];
+              if (operation.targetPath < doc.pathItems.length) {
+                var targetPath = doc.pathItems[operation.targetPath];
+                
+                // Note: Pathfinder operations in ExtendScript are limited
+                // This is a simplified approach
+                if (operation.operation === "unite") {
+                  // Unite paths (would need Pathfinder plugin)
+                  path.selected = true;
+                  targetPath.selected = true;
+                  app.executeMenuCommand("Live Pathfinder Add");
+                }
+              }
+            }
+          }
+          
+          // Apply style
+          if (path && path.typename !== "CompoundPathItem") {
+            if ("${style.fill || ''}" !== "") {
+              path.filled = true;
+              var fillColor = "${style.fill || ''}";
+              if (fillColor.charAt(0) === '#') {
+                var rgbColor = new RGBColor();
+                var hex = fillColor.substring(1);
+                rgbColor.red = parseInt(hex.substring(0, 2), 16);
+                rgbColor.green = parseInt(hex.substring(2, 4), 16);
+                rgbColor.blue = parseInt(hex.substring(4, 6), 16);
+                path.fillColor = rgbColor;
+              }
+            }
+            
+            if ("${style.stroke || ''}" !== "") {
+              path.stroked = true;
+              var strokeColor = "${style.stroke || ''}";
+              if (strokeColor.charAt(0) === '#') {
+                var rgbStroke = new RGBColor();
+                var hexStroke = strokeColor.substring(1);
+                rgbStroke.red = parseInt(hexStroke.substring(0, 2), 16);
+                rgbStroke.green = parseInt(hexStroke.substring(2, 4), 16);
+                rgbStroke.blue = parseInt(hexStroke.substring(4, 6), 16);
+                path.strokeColor = rgbStroke;
+              }
+              
+              if (${style.strokeWidth || 0} > 0) {
+                path.strokeWidth = ${style.strokeWidth || 1};
+              }
+            }
+            
+            if (${style.opacity !== undefined}) {
+              path.opacity = ${style.opacity || 100};
+            }
+          }
+          
+          "Created ${pathType} path" + (path ? " successfully" : " with limitations");
+          
+        } catch (e) {
+          "Error: " + e.message;
+        }
+      `;
+      
+      const result = await executeExtendScriptForApp(script, 'illustrator');
+      
+      return {
+        content: [{
+          type: "text" as const,
+          text: result.success ? result.result || "Advanced path created" : `Error: ${result.error}`
+        }]
+      };
+    })
+  );
+  
   console.error("Registered Illustrator geometry tools");
 }

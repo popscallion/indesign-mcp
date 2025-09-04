@@ -70,10 +70,14 @@ export function getIllustratorToolList(): string[] {
     'create_text_on_path',
     'create_grid_layout',
     'create_pattern_fill',
+    // Intermediate Tools
     'snap_to_grid',
     'create_symbol',
     'place_symbol_instances',
     'bulk_style_application',
+    'create_advanced_path',
+    'manage_swatches_colors',
+    'apply_gradient_mapping',
     // More tools will be added as implemented...
   ];
 }

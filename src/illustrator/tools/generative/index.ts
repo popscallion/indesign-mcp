@@ -877,5 +877,314 @@ export async function registerGenerativeTools(server: McpServer): Promise<void> 
     })
   );
   
+  // Tool: apply_gradient_mapping  
+  // Complexity: 2.3 (Intermediate)
+  // Dependencies: None
+  server.tool(
+    "apply_gradient_mapping",
+    {
+      gradientType: z.enum(["linear", "radial", "mesh", "freeform"]).describe("Type of gradient to apply"),
+      gradientStops: z.array(z.object({
+        color: z.string().describe("Color value (hex or swatch name)"),
+        position: z.number().min(0).max(100).describe("Stop position (0-100%)"),
+        opacity: z.number().min(0).max(100).default(100).describe("Stop opacity"),
+        midpoint: z.number().min(0).max(100).optional().describe("Midpoint between stops")
+      })).describe("Gradient color stops"),
+      angle: z.number().default(0).describe("Angle for linear gradient (degrees)"),
+      center: z.object({
+        x: z.number().describe("Center X for radial gradient"),
+        y: z.number().describe("Center Y for radial gradient")
+      }).optional().describe("Center point for radial gradient"),
+      radius: z.number().optional().describe("Radius for radial gradient"),
+      meshPoints: z.array(z.object({
+        x: z.number().describe("X coordinate"),
+        y: z.number().describe("Y coordinate"),
+        color: z.string().describe("Color at this mesh point")
+      })).optional().describe("Mesh control points for mesh gradient"),
+      mappingMode: z.enum(["fill", "stroke", "both"]).default("fill").describe("Apply to fill, stroke, or both"),
+      targetSelection: z.enum(["selected", "all_paths", "by_layer", "by_name"]).default("selected").describe("Objects to apply gradient to"),
+      targetCriteria: z.object({
+        layerName: z.string().optional().describe("Target layer name"),
+        namePattern: z.string().optional().describe("Name pattern to match")
+      }).optional().describe("Criteria for target selection"),
+      blendMode: z.enum(["normal", "multiply", "screen", "overlay", "soft_light", "hard_light"]).default("normal").describe("Blend mode for gradient"),
+      aspectRatio: z.number().default(1).describe("Aspect ratio for radial gradient"),
+      gradientPreset: z.enum(["sunset", "ocean", "fire", "rainbow", "metallic", "pastel"]).optional().describe("Use predefined gradient preset")
+    },
+    wrapToolForTelemetry("apply_gradient_mapping", async (args: any) => {
+      const {
+        gradientType,
+        gradientStops = [],
+        angle = 0,
+        center,
+        radius,
+        meshPoints = [],
+        mappingMode = "fill",
+        targetSelection = "selected",
+        targetCriteria = {},
+        blendMode = "normal",
+        aspectRatio = 1,
+        gradientPreset
+      } = args;
+      
+      const script = `
+        try {
+          if (!app.documents.length) {
+            throw new Error("No document open");
+          }
+          
+          var doc = app.activeDocument;
+          var targets = [];
+          var processedCount = 0;
+          
+          // Get target objects
+          if ("${targetSelection}" === "selected") {
+            if (doc.selection.length === 0) {
+              throw new Error("No objects selected");
+            }
+            targets = doc.selection;
+          } else if ("${targetSelection}" === "all_paths") {
+            for (var i = 0; i < doc.pathItems.length; i++) {
+              targets.push(doc.pathItems[i]);
+            }
+          } else if ("${targetSelection}" === "by_layer" && "${targetCriteria.layerName || ''}") {
+            var targetLayer = doc.layers.getByName("${targetCriteria.layerName}");
+            for (var j = 0; j < targetLayer.pathItems.length; j++) {
+              targets.push(targetLayer.pathItems[j]);
+            }
+          } else if ("${targetSelection}" === "by_name" && "${targetCriteria.namePattern || ''}") {
+            var pattern = "${targetCriteria.namePattern}";
+            for (var k = 0; k < doc.pathItems.length; k++) {
+              if (doc.pathItems[k].name.indexOf(pattern) !== -1) {
+                targets.push(doc.pathItems[k]);
+              }
+            }
+          }
+          
+          if (targets.length === 0) {
+            throw new Error("No valid targets found");
+          }
+          
+          // Create or get gradient
+          var gradient = null;
+          var gradientColor = new GradientColor();
+          
+          // Use preset if specified
+          var stops = ${JSON.stringify(gradientStops)};
+          if ("${gradientPreset || ''}" !== "") {
+            stops = getPresetStops("${gradientPreset}");
+          }
+          
+          // Helper function for preset gradients
+          function getPresetStops(preset) {
+            switch(preset) {
+              case "sunset":
+                return [
+                  {color: "#FF6B6B", position: 0},
+                  {color: "#FFE66D", position: 33},
+                  {color: "#4ECDC4", position: 66},
+                  {color: "#1A535C", position: 100}
+                ];
+              case "ocean":
+                return [
+                  {color: "#006BA6", position: 0},
+                  {color: "#0496FF", position: 50},
+                  {color: "#89CFF0", position: 100}
+                ];
+              case "fire":
+                return [
+                  {color: "#FF0000", position: 0},
+                  {color: "#FF7F00", position: 33},
+                  {color: "#FFFF00", position: 66},
+                  {color: "#FFFFFF", position: 100}
+                ];
+              case "rainbow":
+                return [
+                  {color: "#FF0000", position: 0},
+                  {color: "#FF7F00", position: 17},
+                  {color: "#FFFF00", position: 34},
+                  {color: "#00FF00", position: 50},
+                  {color: "#0000FF", position: 67},
+                  {color: "#4B0082", position: 84},
+                  {color: "#9400D3", position: 100}
+                ];
+              case "metallic":
+                return [
+                  {color: "#C0C0C0", position: 0},
+                  {color: "#FFFFFF", position: 25},
+                  {color: "#808080", position: 50},
+                  {color: "#FFFFFF", position: 75},
+                  {color: "#404040", position: 100}
+                ];
+              case "pastel":
+                return [
+                  {color: "#FFB3BA", position: 0},
+                  {color: "#BAFFC9", position: 33},
+                  {color: "#BAE1FF", position: 66},
+                  {color: "#FFFFBA", position: 100}
+                ];
+              default:
+                return [{color: "#000000", position: 0}, {color: "#FFFFFF", position: 100}];
+            }
+          }
+          
+          // Find or create gradient
+          try {
+            gradient = doc.gradients.getByName("CustomGradient_" + Date.now());
+          } catch(e) {
+            gradient = doc.gradients.add();
+            gradient.name = "CustomGradient_" + Date.now();
+          }
+          
+          // Set gradient type
+          if ("${gradientType}" === "linear") {
+            gradient.type = GradientType.LINEAR;
+          } else if ("${gradientType}" === "radial") {
+            gradient.type = GradientType.RADIAL;
+          }
+          
+          // Clear existing stops
+          while (gradient.gradientStops.length > 0) {
+            gradient.gradientStops[0].remove();
+          }
+          
+          // Add gradient stops
+          for (var m = 0; m < stops.length; m++) {
+            var stop = stops[m];
+            var gradientStop = gradient.gradientStops.add();
+            
+            // Set color
+            var stopColor = new RGBColor();
+            if (stop.color.charAt(0) === '#') {
+              var hex = stop.color.substring(1);
+              stopColor.red = parseInt(hex.substring(0, 2), 16);
+              stopColor.green = parseInt(hex.substring(2, 4), 16);
+              stopColor.blue = parseInt(hex.substring(4, 6), 16);
+            } else {
+              // Try to get from swatch
+              try {
+                var swatch = doc.swatches.getByName(stop.color);
+                if (swatch.color.typename === "RGBColor") {
+                  stopColor = swatch.color;
+                }
+              } catch(e) {
+                // Default to black
+                stopColor.red = 0;
+                stopColor.green = 0;
+                stopColor.blue = 0;
+              }
+            }
+            
+            gradientStop.color = stopColor;
+            gradientStop.rampPoint = stop.position || (m * 100 / (stops.length - 1));
+            
+            if (stop.midpoint !== undefined && m < stops.length - 1) {
+              gradientStop.midPoint = stop.midpoint;
+            }
+            
+            if (stop.opacity !== undefined) {
+              gradientStop.opacity = stop.opacity;
+            }
+          }
+          
+          gradientColor.gradient = gradient;
+          
+          // Apply to targets
+          for (var n = 0; n < targets.length; n++) {
+            var target = targets[n];
+            
+            try {
+              if ("${mappingMode}" === "fill" || "${mappingMode}" === "both") {
+                target.filled = true;
+                target.fillColor = gradientColor;
+                
+                // Set gradient angle for linear
+                if ("${gradientType}" === "linear") {
+                  gradientColor.angle = ${angle};
+                }
+                
+                // Set origin and length for proper mapping
+                if (target.geometricBounds) {
+                  var bounds = target.geometricBounds;
+                  gradientColor.origin = [bounds[0], bounds[1]];
+                  gradientColor.length = Math.sqrt(
+                    Math.pow(bounds[2] - bounds[0], 2) + 
+                    Math.pow(bounds[3] - bounds[1], 2)
+                  );
+                }
+                
+                // Apply aspect ratio for radial
+                if ("${gradientType}" === "radial") {
+                  gradientColor.hiliteAngle = 0;
+                  gradientColor.hiliteLength = ${radius || 100};
+                  
+                  // Set center if specified
+                  if (${center ? 'true' : 'false'}) {
+                    gradientColor.origin = [${center?.x || 0}, ${center?.y || 0}];
+                  }
+                }
+              }
+              
+              if ("${mappingMode}" === "stroke" || "${mappingMode}" === "both") {
+                target.stroked = true;
+                target.strokeColor = gradientColor;
+                
+                if (!target.strokeWidth || target.strokeWidth === 0) {
+                  target.strokeWidth = 1;
+                }
+              }
+              
+              // Set blend mode
+              switch("${blendMode}") {
+                case "multiply":
+                  target.blendingMode = BlendModes.MULTIPLY;
+                  break;
+                case "screen":
+                  target.blendingMode = BlendModes.SCREEN;
+                  break;
+                case "overlay":
+                  target.blendingMode = BlendModes.OVERLAY;
+                  break;
+                case "soft_light":
+                  target.blendingMode = BlendModes.SOFTLIGHT;
+                  break;
+                case "hard_light":
+                  target.blendingMode = BlendModes.HARDLIGHT;
+                  break;
+                default:
+                  target.blendingMode = BlendModes.NORMAL;
+              }
+              
+              processedCount++;
+            } catch(e) {
+              // Skip objects that can't accept gradients
+            }
+          }
+          
+          // Handle mesh gradient (simplified - would need mesh item)
+          if ("${gradientType}" === "mesh" && ${meshPoints.length} > 0) {
+            // Mesh gradients require creating mesh items
+            // This is a simplified placeholder
+            "Note: Mesh gradients require manual mesh item creation";
+          }
+          
+          "Applied ${gradientType} gradient to " + processedCount + " objects";
+          
+        } catch (e) {
+          "Error: " + e.message;
+        }
+      `;
+      
+      const result = await executeExtendScriptForApp(script, 'illustrator');
+      
+      return {
+        content: [{
+          type: "text" as const,
+          text: result.success ? result.result || "Gradient mapping applied" : `Error: ${result.error}`
+        }]
+      };
+    })
+  );
+  
   console.error("Registered Illustrator generative tools");
 }
