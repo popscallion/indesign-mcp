@@ -2,15 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# InDesign MCP Server
+# Adobe Creative Suite MCP Server
 
 ## 🎯 Project Overview
-Building an **AI-driven InDesign automation platform** using TypeScript MCP (Model Context Protocol) server that bridges LLMs with Adobe InDesign via ExtendScript.
+Building an **AI-driven automation platform** for Adobe InDesign and Illustrator using TypeScript MCP (Model Context Protocol) that bridges LLMs with Adobe applications via ExtendScript.
 
-**Current State**: Production-ready TypeScript MCP with 52+ working tools across 10 categories + telemetry system + evolutionary testing framework
-**Goal**: Complete agentic workflow platform for two MVP scenarios:
-1. **Copy-Design** – Recreate reference page layouts from images
-2. **Add-Content** – Flow new text into existing documents while preserving design
+**Current State**: 
+- **InDesign**: 52+ production-ready tools with telemetry and evolutionary testing
+- **Illustrator**: 44 tools implemented, workflow testing in progress
+
+**Primary Goals**:
+1. **InDesign**: Copy-Design (recreate layouts) and Add-Content (flow text) workflows
+2. **Illustrator**: Logo creation, pattern design, data visualization, typography effects
 
 ## 📌 Current Development Focus
 All core functionality is complete. Current challenge: **Improving LLM Decision-Making**
@@ -34,20 +37,18 @@ The goal is to push the MCP as far as possible while being realistic about const
 
 ## 📁 Project Structure
 ```
-indesign-mcp/                    # Main TypeScript MCP project
+adobe-mcp/                       # Main TypeScript MCP project
 ├── src/
-│   ├── index.ts                 # Server entry point
-│   ├── extendscript.ts          # AppleScript-ExtendScript bridge
-│   ├── types.ts                 # TypeScript type definitions
-│   ├── tools/                   # Tool implementations (8 categories)
-│   │   ├── telemetry.ts         # Telemetry capture system
-│   │   ├── telemetryPersistence.ts  # Telemetry file storage
-│   │   └── telemetryServer.ts   # Telemetry-enabled server
-│   └── prompts/                 # Strategic workflow prompts
+│   ├── index.ts                # Server entry point (multi-app support)
+│   ├── extendscript.ts         # AppleScript-ExtendScript bridge
+│   ├── types.ts                # TypeScript type definitions
+│   ├── tools/                  # InDesign tool implementations
+│   └── illustrator/
+│       ├── tools/               # Illustrator tool implementations  
+│       └── workflows/           # Test workflows (14 scenarios)
 ├── src/experimental/
-│   └── evolutionary/            # Evolutionary testing system (Task-based)
-│       ├── taskBasedRunner.ts   # Task tool integration
-│       ├── patternAnalyzer.ts   # Pattern detection
+│   ├── evolutionary/           # Evolutionary testing system
+│   └── visual-testing/         # Peekaboo integration
 │       ├── claudeAnalyzer.ts    # Claude Code analysis
 │       └── example-task-workflow.ts  # Usage example
 ├── docs/                        # Documentation and API references
@@ -274,36 +275,52 @@ Keep these test documents ready:
 - **Composite Tools** (7): high-level workflow automation and layout operations
 - **Analysis Tools** (7): decision tracking, metrics extraction, and layout comparison
 
-### 🎯 Current Priority: LLM Decision-Making Optimization
-1. **Automated testing loops**: Reduce manual validation overhead
-2. **Decision pattern analysis**: Identify common LLM mistakes in tool usage
-3. **Enhanced validation rules**: Catch layout problems before they cascade
-4. **Prompt refinement**: Guide LLMs toward better strategic decisions
+## 🎯 Development Roadmap
 
-### Future Enhancements
-Focus areas for potential expansion:
-1. **Advanced Text Operations**: find/replace, spell check, typography
-2. **Image Management**: image processing, effects, color management
-3. **Print Production**: color separation, preflighting, packaging
+### Immediate (This Week)
+1. **Test Illustrator Tools**: Validate all 44 tools with Adobe Illustrator
+2. **Visual Testing**: Configure Peekaboo for design validation
+3. **Claude Desktop**: Test dual-mode InDesign/Illustrator switching
 
-### 📋 Documentation Guide
-- **InDesign API Reference** (`docs/InDesign ExtendScript_API_Adob_InDesign_2025/`): Complete Adobe InDesign 2025 ExtendScript API documentation for method signatures, parameters, and examples
+### Short-term (Weeks 2-3)
+1. **Performance**: Profile and optimize ExtendScript execution
+2. **Documentation**: Complete API reference and troubleshooting guides
+3. **Evolutionary Testing**: Run full suite on Illustrator tools
+
+### Long-term
+1. **Cross-App Workflows**: InDesign ↔ Illustrator asset sync
+2. **Cloud Integration**: Creative Cloud Libraries support
+3. **Advanced Features**: Photoshop integration, batch processing
+
+## 📋 Key Documentation
+
+### Project Status
+- **[PROJECT-STATUS.md](PROJECT-STATUS.md)**: Current implementation status and roadmap
+- **[TESTING-GUIDE.md](TESTING-GUIDE.md)**: Comprehensive testing procedures
+- **[README.md](README.md)**: Project overview and setup
+
+### API References  
+- **InDesign API**: `docs/InDesign ExtendScript_API_Adob_InDesign_2025/`
+- **Illustrator Workflows**: `src/illustrator/workflows/README.md`
 
 ## ⚡ Quick Reference
 
-### Start Development Session
+### Quick Commands
 
-**Stdio Transport (Traditional MCP)**:
 ```bash
-npm run build && npm start
-# Ensure InDesign is running with a document open
-```
+# Build and test
+npm run build
+npm test
 
-**HTTP Transport with Ngrok (Web Access)**:
-```bash
-npm run build && npm run start:http
-# Automatically creates HTTPS tunnel via ngrok
-# Outputs: https://xyz123.ngrok.app/mcp
+# Run MCP Server
+npm start                    # InDesign mode (default)
+MCP_APP_MODE=illustrator npm start  # Illustrator mode
+
+# HTTP Server with ngrok
+npm run start:http          # Auto-creates HTTPS tunnel
+
+# Test Illustrator workflows
+npx tsx src/illustrator/workflows/runWorkflowTests.ts --all
 ```
 
 ### Before Implementing New Tools

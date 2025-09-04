@@ -1,22 +1,35 @@
-# InDesign MCP Server
+# Adobe Creative Suite MCP Server
 
-An experimental MCP (Model Context Protocol) server for Adobe InDesign automation via ExtendScript. This server provides AI assistants with comprehensive InDesign document manipulation capabilities through both traditional stdio transport and modern HTTP/HTTPS endpoints with automatic ngrok tunneling.
+A production-ready MCP (Model Context Protocol) server for Adobe InDesign and Illustrator automation via ExtendScript. This server provides AI assistants with comprehensive document manipulation capabilities through both traditional stdio transport and modern HTTP/HTTPS endpoints with automatic ngrok tunneling.
 
 ## Features
 
-Currently implements 69 tools across 11 categories:
+### InDesign Tools (52+ production-ready)
+Implements comprehensive InDesign automation across 10 categories:
 
-- **Text Operations** (4): Add, update, remove, and extract text content
-- **Style Management** (10): Create and apply paragraph/character/object styles with enhanced selection criteria
-- **Layout Control** (4): Position and create text frames, alternate layouts for responsive design
-- **Page Management** (4): Add, remove, inspect pages, get dimensions  
-- **Special Features** (4): Insert characters, manage layers, create tables, status
-- **Utility Tools** (17): Text threading, overset resolution, data merge setup, flow management, asset management, master pages, bulk operations
-- **Document Operations** (7): Export, save, import content, place files, batch export by layout, preview generation
-- **Object Transformation** (3): Transform, duplicate, and align objects
-- **Composite Tools** (7): High-level workflow automation and layout operations
-- **Analysis Tools** (7): Decision tracking, metrics extraction, and layout comparison
-- **Color Management** (6): Create and manage color swatches, themes, object styles, and color groups
+- **Text Tools** (4): Add, update, remove, and get document text
+- **Style Tools** (9): Paragraph/character style management, fonts, text selection
+- **Layout Tools** (2): Text frame positioning and creation
+- **Page Tools** (4): Page management, dimensions, navigation
+- **Special Tools** (4): Layers, tables, special characters, status
+- **Utility Tools** (7): Text threading, overset resolution, frame management
+- **Export Tools** (6): Document export, save, import, place files, preview
+- **Transform Tools** (3): Object transformation, duplication, alignment
+- **Composite Tools** (7): High-level workflow automation
+- **Analysis Tools** (7): Decision tracking, metrics, layout comparison
+
+### Illustrator Tools (44 implemented, testing in progress)
+Comprehensive Illustrator automation across 9 categories:
+
+- **Foundation Layer** (6): Element selection, shapes, measurements, layers, artboards
+- **Basic Operations** (9): Transformations, exports, styles, patterns, grids
+- **Intermediate Tools** (7): Symbols, advanced paths, swatches, gradients
+- **Data Tools** (4): CSV import, data merge, variable text
+- **Analysis Tools** (3): Color usage, font metrics, path complexity
+- **Generative Tools** (6): Procedural patterns, blend modes, variations
+- **Transform Tools** (4): Envelope distortion, alignment, clipping masks
+- **Export Tools** (5): Asset extraction, batch export, packaging
+- **Integration Tools** (4): Third-party services, cloud storage
 
 ## Transport Modes
 
@@ -34,10 +47,10 @@ Currently implements 69 tools across 11 categories:
 ## Requirements
 
 - Node.js 18+
-- Adobe InDesign (tested with 2025 v20.3.1)
+- Adobe InDesign (tested with 2025) and/or Adobe Illustrator (CC 2024+)
 - macOS (ExtendScript automation via AppleScript)
-- **ngrok** (for tunneling): `brew install ngrok`
-- **OpenSSL** (for HTTPS certificates): `brew install openssl`
+- **ngrok** (optional, for tunneling): `brew install ngrok`
+- **OpenSSL** (optional, for HTTPS certificates): `brew install openssl`
 
 ## Quick Start
 
