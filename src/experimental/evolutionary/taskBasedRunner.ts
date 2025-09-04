@@ -538,8 +538,30 @@ export class TaskBasedRunner {
     // Extract metrics
     const metrics = await this.extractLayoutMetrics();
     
-    // Compare to reference
-    const comparison = await this.compareToReference(metrics, config.referenceMetrics);
+    // Compare to reference with optional visual testing
+    let comparison: ComparisonResult;
+    
+    const enableVisualTesting = process.env.ENABLE_VISUAL_TESTING === 'true' || 
+                                config.enableVisualTesting === true;
+    
+    if (enableVisualTesting && config.referenceImage) {
+      console.log('📸 Using visual testing with Peekaboo...');
+      await this.mcpBridge.enableVisualTesting();
+      comparison = await this.mcpBridge.compareWithVisualAnalysis(
+        config.referenceMetrics,
+        config.referenceImage,
+        0.05  // tolerance
+      );
+      
+      // Log visual results if available
+      if (comparison.visualSimilarity !== undefined) {
+        console.log(`  Visual similarity: ${comparison.visualSimilarity}%`);
+        console.log(`  Metrics score: ${comparison.metricsScore}%`);
+        console.log(`  Combined score: ${comparison.score}%`);
+      }
+    } else {
+      comparison = await this.compareToReference(metrics, config.referenceMetrics);
+    }
     
     // Save document state
     await this.saveDocumentState(`gen_${config.generation}_${agentId}`);

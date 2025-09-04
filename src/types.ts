@@ -319,6 +319,10 @@ export interface ComparisonResult {
   match: boolean;
   score: number;
   deviations: Deviation[];
+  // Visual testing fields (optional)
+  visualFeedback?: string;
+  visualSimilarity?: number;
+  metricsScore?: number;
 }
 
 /**

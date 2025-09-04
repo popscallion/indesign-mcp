@@ -9,6 +9,7 @@ import { LayoutMetrics, ComparisonResult } from '../../types.js';
 import { executeExtendScript } from '../../extendscript.js';
 import * as os from 'os';
 import * as path from 'path';
+import { PeekabooAnalyzer, VisualAnalysis } from '../visual-testing/peekabooAnalyzer.js';
 
 /**
  * MCP Bridge for test orchestration
@@ -18,6 +19,7 @@ export class McpBridge {
   private server: McpServer | null = null;
   private tools: Map<string, { schema: any; handler: Function }> = new Map();
   private telemetryEnabled: boolean = false;
+  private peekabooAnalyzer: PeekabooAnalyzer | null = null;
   
   /**
    * Initialize the bridge with a telemetry-enabled server
@@ -243,6 +245,108 @@ export class McpBridge {
     
     // Parse the comparison result
     return this.parseComparisonResult(result);
+  }
+  
+  /**
+   * Enable visual testing with Peekaboo
+   */
+  async enableVisualTesting(): Promise<void> {
+    const provider = process.env.PEEKABOO_AI_PROVIDER || 'anthropic';
+    const model = process.env.PEEKABOO_AI_MODEL || 'claude-3-5-sonnet';
+    this.peekabooAnalyzer = new PeekabooAnalyzer(provider, model);
+    
+    // Check if Peekaboo is available
+    const isAvailable = await this.peekabooAnalyzer.isAvailable();
+    if (!isAvailable) {
+      console.warn('⚠️  Peekaboo not available - visual analysis will use fallback mode');
+    } else {
+      console.log('✓ Peekaboo visual testing enabled');
+    }
+  }
+  
+  /**
+   * Compare with visual analysis using Peekaboo
+   */
+  async compareWithVisualAnalysis(
+    referenceMetrics: LayoutMetrics,
+    referenceImage: string,
+    tolerance: number = 0.05
+  ): Promise<ComparisonResult> {
+    // First get metrics-based comparison
+    const metricsComparison = await this.compareToReference(referenceMetrics, tolerance);
+    
+    // Generate high-quality preview
+    const previewResult = await this.callTool('preview_document', {
+      quality: 'high',  // 300 DPI for detailed comparison
+      auto_cleanup: false
+    });
+    
+    // Extract file path from preview result
+    const previewText = previewResult.content?.[0]?.text || '';
+    const filePathMatch = previewText.match(/FILE LOCATION.*?: (.+?)(?:\n|$)/);
+    const previewPath = filePathMatch?.[1]?.trim();
+    
+    if (!previewPath) {
+      console.warn('⚠️  Could not extract preview path from result');
+      return metricsComparison;
+    }
+    
+    // If visual testing is enabled, add visual analysis
+    if (this.peekabooAnalyzer) {
+      try {
+        const visualAnalysis = await this.peekabooAnalyzer.analyzePreview(
+          previewPath,
+          referenceImage
+        );
+        
+        // Merge visual analysis with metrics comparison
+        return this.mergeAnalysisResults(metricsComparison, visualAnalysis);
+      } catch (error) {
+        console.warn('⚠️  Visual analysis failed:', error);
+        return metricsComparison;
+      }
+    }
+    
+    return metricsComparison;
+  }
+  
+  /**
+   * Merge metrics comparison with visual analysis
+   */
+  private mergeAnalysisResults(
+    metricsComparison: ComparisonResult,
+    visualAnalysis: VisualAnalysis
+  ): ComparisonResult {
+    // If visual analysis failed (similarity -1), use metrics only
+    if (visualAnalysis.similarity < 0) {
+      return {
+        ...metricsComparison,
+        visualFeedback: visualAnalysis.feedback
+      };
+    }
+    
+    // Calculate combined score (50/50 weight)
+    const combinedScore = Math.round(
+      (metricsComparison.score + visualAnalysis.similarity) / 2
+    );
+    
+    // Add visual differences to deviations
+    const visualDeviations = visualAnalysis.differences.map(diff => ({
+      type: 'visual',
+      field: 'appearance',
+      expected: 'matches reference',
+      actual: diff,
+      deviation: 100 - visualAnalysis.similarity
+    }));
+    
+    return {
+      match: combinedScore >= 85,
+      score: combinedScore,
+      deviations: [...(metricsComparison.deviations || []), ...visualDeviations],
+      visualFeedback: visualAnalysis.feedback,
+      visualSimilarity: visualAnalysis.similarity,
+      metricsScore: metricsComparison.score
+    };
   }
   
   /**
