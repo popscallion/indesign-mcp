@@ -2,6 +2,8 @@
 
 ## Current State
 ✅ **Monorepo refactoring complete** - Project successfully migrated to pnpm workspace structure with separate packages for shared code, InDesign server, and Illustrator server.
+✅ **HTTP/HTTPS servers updated** - Support app mode switching via `MCP_APP_MODE` environment variable.
+✅ **Tests configured** - All packages have Jest configured and tests pass (with no test files yet).
 
 ## Immediate Priorities
 
