@@ -1172,7 +1172,7 @@ export async function registerColorTools(server: McpServer): Promise<void> {
           
           // Add group information to document metadata if possible
           try {
-            var metadataKey = "ColorGroup_" + groupName.replace(/\s/g, "_");
+            var metadataKey = "ColorGroup_" + groupName.replace(/\\s/g, "_");
             var groupData = {
               name: groupName,
               swatches: validSwatches.map(function(s) { return s.name; }),

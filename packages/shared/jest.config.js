@@ -11,14 +11,16 @@ export default {
       'ts-jest',
       {
         useESM: true,
+        tsconfig: {
+          module: 'ESNext',
+          target: 'ES2020',
+          moduleResolution: 'node',
+          allowSyntheticDefaultImports: true,
+          esModuleInterop: true,
+        }
       },
     ],
   },
-  testMatch: [
-    '**/tests/**/*.test.ts', 
-    '**/tests/**/*.spec.ts',
-    '**/src/**/*.test.ts',
-    '**/src/**/*.spec.ts'
-  ],
-  testPathIgnorePatterns: [],
+  testMatch: ['**/src/**/*.test.ts', '**/src/**/*.spec.ts'],
+  testPathIgnorePatterns: ['node_modules', 'dist'],
 };

@@ -1960,7 +1960,7 @@ async function handleApplyMasterToPages(args: any): Promise<{ content: TextConte
         // Parse ranges like "1-5,7,9-12"
         var ranges = pageRange.split(",");
         for (var r = 0; r < ranges.length; r++) {
-          var range = ranges[r].replace(/\s/g, "");
+          var range = ranges[r].replace(/\\s/g, "");
           if (range.indexOf("-") !== -1) {
             var parts = range.split("-");
             var start = parseInt(parts[0]);
@@ -2193,7 +2193,7 @@ async function handleApplyOperationToAllPages(args: any): Promise<{ content: Tex
       } else {
         var ranges = pageRange.split(",");
         for (var r = 0; r < ranges.length; r++) {
-          var range = ranges[r].replace(/\s/g, "");
+          var range = ranges[r].replace(/\\s/g, "");
           if (range.indexOf("-") !== -1) {
             var parts = range.split("-");
             var start = parseInt(parts[0]) - 1;
@@ -2402,7 +2402,7 @@ async function handleSelectObjectsByCriteria(args: any): Promise<{ content: Text
       } else {
         var ranges = pageRange.split(",");
         for (var r = 0; r < ranges.length; r++) {
-          var range = ranges[r].replace(/\s/g, "");
+          var range = ranges[r].replace(/\\s/g, "");
           if (range.indexOf("-") !== -1) {
             var parts = range.split("-");
             var start = parseInt(parts[0]) - 1;
@@ -2575,7 +2575,7 @@ async function handleBatchApplyStyles(args: any): Promise<{ content: TextContent
       } else {
         var ranges = pageRange.split(",");
         for (var r = 0; r < ranges.length; r++) {
-          var range = ranges[r].replace(/\s/g, "");
+          var range = ranges[r].replace(/\\s/g, "");
           if (range.indexOf("-") !== -1) {
             var parts = range.split("-");
             var start = parseInt(parts[0]) - 1;
