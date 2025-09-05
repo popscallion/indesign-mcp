@@ -1,6 +1,10 @@
 # Adobe MCP Project Status
 
-*Last Updated: 2025-01-04*
+*Last Updated: 2025-01-05*
+
+## 🚨 Major Update: Monorepo Migration Complete
+
+The project has been successfully migrated to a **pnpm monorepo structure** with separate packages for shared code, InDesign server, and Illustrator server. This provides better code organization, maintainability, and deployment flexibility.
 
 ## 🎯 Current Implementation
 
@@ -37,20 +41,26 @@
 ## 🚀 Quick Start
 
 ```bash
-# Build and run
-npm install && npm run build
+# Install dependencies (requires pnpm)
+npm install -g pnpm
+pnpm install
 
-# InDesign mode
-npm start
+# Build all packages
+pnpm run build
 
-# Illustrator mode  
-MCP_APP_MODE=illustrator npm start
+# Run InDesign server
+pnpm --filter indesign-server start
 
-# Test workflows
-npx tsx src/illustrator/workflows/runWorkflowTests.ts --all
+# Run Illustrator server
+pnpm --filter illustrator-server start
 
-# HTTP with ngrok
-npm run start:http
+# HTTP mode with app switching
+cd packages/shared
+MCP_APP_MODE=indesign tsx src/http-server.ts
+MCP_APP_MODE=illustrator tsx src/http-server.ts
+
+# Run tests
+pnpm test
 ```
 
 ## 📊 Technical Metrics
