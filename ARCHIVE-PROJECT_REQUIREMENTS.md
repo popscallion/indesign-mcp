@@ -1,4 +1,4 @@
-# Project Requirements: Monorepo Refactoring
+# ARCHIVE - Project Requirements: Monorepo Refactoring [COMPLETED]
 
 This document outlines the requirements and plan for refactoring the Adobe Creative Suite MCP server into a monorepo managed by pnpm. This new architecture will provide a more scalable, maintainable, and flexible foundation for the project.
 
