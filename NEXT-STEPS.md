@@ -11,9 +11,9 @@
 - [ ] Complete testing of 44 Illustrator tools
 - [ ] Document any breaking changes from refactoring
 
-### 2. HTTP/HTTPS Server Migration
-- [ ] Move HTTP/HTTPS servers from `packages/shared/src/` to proper location
-- [ ] Implement app mode switching for HTTP servers
+### 2. ✅ HTTP/HTTPS Server Migration
+- [x] ~~Move HTTP/HTTPS servers from `packages/shared/src/` to proper location~~ - Kept in shared as utilities
+- [x] Implement app mode switching for HTTP servers - Uses `MCP_APP_MODE` env var
 - [ ] Test remote access via ngrok tunneling
 
 ### 3. Evolutionary Testing System
@@ -36,8 +36,16 @@
 # Development
 pnpm install                          # Install dependencies
 pnpm run build                        # Build all packages
+
+# Stdio Mode (Traditional MCP)
 pnpm --filter indesign-server start   # Run InDesign server
 pnpm --filter illustrator-server start # Run Illustrator server
+
+# HTTP/HTTPS Mode (Web Access)
+cd packages/shared
+MCP_APP_MODE=indesign tsx src/http-server.ts   # InDesign HTTP server
+MCP_APP_MODE=illustrator tsx src/http-server.ts # Illustrator HTTP server
+tsx src/https-server.ts                         # HTTPS server with SSL
 
 # Testing
 pnpm test                             # Run all tests

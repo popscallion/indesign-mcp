@@ -1,14 +1,11 @@
 /**
- * @fileoverview HTTPS server for InDesign MCP with native SSL and ngrok support
+ * @fileoverview HTTPS server for Adobe MCP with native SSL and ngrok support
  * Provides secure endpoints with self-signed certificates or custom SSL certificates
  */
 
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
-// TODO: This should import from @mcp/indesign-server when available
-// import { createInDesignMcpServer, SERVER_CONFIG } from '@mcp/indesign-server';
-const createInDesignMcpServer = null as any;
-const SERVER_CONFIG = { name: 'indesign-mcp', version: '1.0.0' };
+import { getServerConfig, getAppName, getAppMode } from './server-factory-simple.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { spawn } from 'child_process';
 import { URL } from 'url';
@@ -130,10 +127,11 @@ class HttpsServer {
     // Health check endpoint
     if (url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
+      const serverConfig = getServerConfig();
       res.end(JSON.stringify({
         status: 'healthy',
-        server: SERVER_CONFIG.name,
-        version: SERVER_CONFIG.version,
+        server: serverConfig.name,
+        version: serverConfig.version,
         activeSessions: this.activeSessions.size,
         https: req.connection.encrypted ? 'enabled' : 'disabled',
         ngrok: this.ngrokUrl ? 'connected' : 'disabled'
@@ -180,9 +178,10 @@ class HttpsServer {
           `https://localhost:${this.config.httpsPort}` : 
           `http://localhost:${this.config.port}`);
       
+      const serverConfig = getServerConfig();
       res.end(JSON.stringify({
-        name: SERVER_CONFIG.name,
-        version: SERVER_CONFIG.version,
+        name: serverConfig.name,
+        version: serverConfig.version,
         transport: 'SSE',
         security: {
           https: req.connection.encrypted,
@@ -398,8 +397,17 @@ class HttpsServer {
                              process.env.EVOLUTION_SESSION_ID !== undefined ||
                              process.env.TELEMETRY_SESSION_ID !== undefined;
       
-      // Create MCP server instance
-      this.mcpServer = await createInDesignMcpServer(enableTelemetry);
+      // Create MCP server instance based on app mode
+      const appMode = getAppMode();
+      if (appMode === 'illustrator') {
+        const modulePath = '../../illustrator-server/dist/index.js';
+        const { createIllustratorMcpServer } = await import(modulePath);
+        this.mcpServer = await createIllustratorMcpServer(enableTelemetry);
+      } else {
+        const modulePath = '../../indesign-server/dist/index.js';
+        const { createInDesignMcpServer } = await import(modulePath);
+        this.mcpServer = await createInDesignMcpServer(enableTelemetry);
+      }
       
       if (enableTelemetry) {
         console.error("🔬 MCP Server started with telemetry enabled");
@@ -421,7 +429,7 @@ class HttpsServer {
       // Start HTTP server
       await new Promise<void>((resolve) => {
         this.httpServer.listen(this.config.port, () => {
-          console.error(`🚀 InDesign MCP HTTP Server started on port ${this.config.port}`);
+          console.error(`🚀 ${getAppName()} MCP HTTP Server started on port ${this.config.port}`);
           resolve();
         });
       });
@@ -430,7 +438,7 @@ class HttpsServer {
       if (this.httpsServer) {
         await new Promise<void>((resolve) => {
           this.httpsServer.listen(this.config.httpsPort, () => {
-            console.error(`🔒 InDesign MCP HTTPS Server started on port ${this.config.httpsPort}`);
+            console.error(`🔒 ${getAppName()} MCP HTTPS Server started on port ${this.config.httpsPort}`);
             resolve();
           });
         });

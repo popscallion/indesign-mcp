@@ -1,13 +1,10 @@
 /**
- * @fileoverview HTTP server for InDesign MCP with SSE transport
+ * @fileoverview HTTP server for Adobe MCP with SSE transport
  * Provides HTTP/HTTPS endpoint that can be proxied through ngrok
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-// TODO: This should import from @mcp/indesign-server when available
-// import { createInDesignMcpServer, SERVER_CONFIG } from '@mcp/indesign-server';
-const createInDesignMcpServer = null as any;
-const SERVER_CONFIG = { name: 'indesign-mcp', version: '1.0.0' };
+import { getServerConfig, getAppName, getAppMode } from './server-factory-simple.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { spawn } from 'child_process';
 import { URL } from 'url';
@@ -87,11 +84,12 @@ class HttpMcpServer {
 
     // Health check endpoint
     if (url.pathname === '/health') {
+      const serverConfig = getServerConfig();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'healthy',
-        server: SERVER_CONFIG.name,
-        version: SERVER_CONFIG.version,
+        server: serverConfig.name,
+        version: serverConfig.version,
         activeSessions: this.activeSessions.size
       }));
       return;
@@ -111,10 +109,11 @@ class HttpMcpServer {
 
     // API info endpoint
     if (url.pathname === '/' || url.pathname === '/info') {
+      const serverConfig = getServerConfig();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        name: SERVER_CONFIG.name,
-        version: SERVER_CONFIG.version,
+        name: serverConfig.name,
+        version: serverConfig.version,
         transport: 'SSE',
         endpoints: {
           connect: '/mcp (GET - establish SSE connection)',
@@ -262,8 +261,17 @@ class HttpMcpServer {
                              process.env.EVOLUTION_SESSION_ID !== undefined ||
                              process.env.TELEMETRY_SESSION_ID !== undefined;
       
-      // Create MCP server instance
-      this.mcpServer = await createInDesignMcpServer(enableTelemetry);
+      // Create MCP server instance based on app mode
+      const appMode = getAppMode();
+      if (appMode === 'illustrator') {
+        const modulePath = '../../illustrator-server/dist/index.js';
+        const { createIllustratorMcpServer } = await import(modulePath);
+        this.mcpServer = await createIllustratorMcpServer(enableTelemetry);
+      } else {
+        const modulePath = '../../indesign-server/dist/index.js';
+        const { createInDesignMcpServer } = await import(modulePath);
+        this.mcpServer = await createInDesignMcpServer(enableTelemetry);
+      }
       
       if (enableTelemetry) {
         console.error("🔬 MCP Server started with telemetry enabled");
@@ -285,7 +293,7 @@ class HttpMcpServer {
         try {
           const ngrokUrl = await this.startNgrok();
           console.error(`🌐 Ngrok tunnel established: ${ngrokUrl}`);
-          console.error(`   MCP endpoint: ${ngrokUrl}/mcp`);
+          console.error(`   ${getAppName()} MCP endpoint: ${ngrokUrl}/mcp`);
           console.error(`   Health check: ${ngrokUrl}/health`);
           console.error(`   API info: ${ngrokUrl}/info`);
         } catch (error) {

@@ -9,3 +9,6 @@ export * from './telemetryFlag.js';
 export * from './telemetryWrapper.js';
 export * from './utils/changeSummary.js';
 export * from './utils/json2-polyfill.js';
+export * from './server-factory-simple.js';
+export { HttpMcpServer } from './http-server.js';
+export { HttpsServer } from './https-server.js';
