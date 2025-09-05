@@ -1,157 +1,204 @@
 # Adobe Creative Suite MCP Server
 
-Production-ready MCP (Model Context Protocol) server for Adobe InDesign and Illustrator automation via ExtendScript. Bridges AI assistants with Adobe applications for comprehensive document manipulation.
+Production-ready MCP (Model Context Protocol) server enabling AI assistants to automate Adobe InDesign and Illustrator via ExtendScript.
 
-## Features
+## 🎯 What is This?
 
-### InDesign Tools (52+ production-ready)
-Implements comprehensive InDesign automation across 10 categories:
+A bridge between AI language models (like Claude) and Adobe Creative Suite applications. It allows AI assistants to:
+- Create and modify documents programmatically
+- Apply professional typography and layout
+- Generate data visualizations
+- Automate repetitive design tasks
+- Export to multiple formats
 
-- **Text Tools** (4): Add, update, remove, and get document text
-- **Style Tools** (9): Paragraph/character style management, fonts, text selection
-- **Layout Tools** (2): Text frame positioning and creation
-- **Page Tools** (4): Page management, dimensions, navigation
-- **Special Tools** (4): Layers, tables, special characters, status
-- **Utility Tools** (7): Text threading, overset resolution, frame management
-- **Export Tools** (6): Document export, save, import, place files, preview
-- **Transform Tools** (3): Object transformation, duplication, alignment
-- **Composite Tools** (7): High-level workflow automation
-- **Analysis Tools** (7): Decision tracking, metrics, layout comparison
+## 🚀 Quick Start
 
-### Illustrator Tools (44 implemented, testing in progress)
-Comprehensive Illustrator automation across 9 categories:
-
-- **Foundation Layer** (6): Element selection, shapes, measurements, layers, artboards
-- **Basic Operations** (9): Transformations, exports, styles, patterns, grids
-- **Intermediate Tools** (7): Symbols, advanced paths, swatches, gradients
-- **Data Tools** (4): CSV import, data merge, variable text
-- **Analysis Tools** (3): Color usage, font metrics, path complexity
-- **Generative Tools** (6): Procedural patterns, blend modes, variations
-- **Transform Tools** (4): Envelope distortion, alignment, clipping masks
-- **Export Tools** (5): Asset extraction, batch export, packaging
-- **Integration Tools** (4): Third-party services, cloud storage
-
-## Transport Modes
-
-- **Stdio**: Standard MCP over stdin/stdout (Claude Desktop, local clients)
-- **HTTP/HTTPS**: SSE with ngrok tunneling for remote access
-
-## Requirements
-
-- Node.js 18+
-- Adobe InDesign (tested with 2025) and/or Adobe Illustrator (CC 2024+)
-- macOS (ExtendScript automation via AppleScript)
-- **ngrok** (optional, for tunneling): `brew install ngrok`
-- **OpenSSL** (optional, for HTTPS certificates): `brew install openssl`
-
-## Project Structure
-
-This project uses a **pnpm monorepo** structure for better code organization:
-
-```
-packages/
-├── shared/              # Shared utilities, telemetry, ExtendScript bridge
-├── indesign-server/     # InDesign-specific tools and server
-└── illustrator-server/  # Illustrator-specific tools and server
-```
-
-## Quick Start
+### Prerequisites
+- **Node.js 18+** 
+- **Adobe InDesign** (2025) or **Adobe Illustrator** (CC 2024+)
+- **macOS** (required for AppleScript-ExtendScript bridge)
+- **pnpm** package manager (`npm install -g pnpm`)
 
 ### Installation
-```bash
-# Install pnpm if you haven't already
-npm install -g pnpm
 
-# Install all dependencies
+```bash
+# Clone the repository
+git clone https://github.com/your-org/adobe-mcp-server.git
+cd adobe-mcp-server
+
+# Install dependencies
 pnpm install
 
 # Build all packages
 pnpm run build
 ```
 
-### Stdio Mode (Traditional MCP)
+### Running the Server
+
+#### Option 1: Standard MCP (for Claude Desktop)
 ```bash
-# Run InDesign server
+# InDesign server
 pnpm --filter indesign-server start
 
-# Run Illustrator server
+# Illustrator server
 pnpm --filter illustrator-server start
 ```
 
-### HTTP/HTTPS Mode (Web Access)
+#### Option 2: HTTP/HTTPS Mode (for web access)
 ```bash
-# HTTP development with ngrok
-npm run dev:http
+# Navigate to shared package
+cd packages/shared
 
-# HTTPS development with self-signed certs + ngrok
-npm run dev:https
+# InDesign HTTP server
+MCP_APP_MODE=indesign npx tsx src/http-server.ts
+
+# Illustrator HTTP server
+MCP_APP_MODE=illustrator npx tsx src/http-server.ts
 ```
 
-## Development
+## 📦 Project Structure
 
-### Build and Run Commands
-
-```bash
-# Build
-npm run build              # Compile TypeScript
-npm run typecheck          # Type check main code and tests
-
-# Stdio Transport
-npm start                  # Run stdio server
-npm run dev                # Development mode with watch
-
-# HTTP Transport
-npm run start:http         # Run HTTP server
-npm run dev:http          # Development HTTP server with ngrok
-npm run dev:http 4000     # Custom port with ngrok
-
-# HTTPS Transport
-npm run start:https        # Run HTTPS server with self-signed certs
-npm run dev:https         # Development HTTPS server with ngrok
-npm run dev:https 3000 3443  # Custom HTTP and HTTPS ports
-
-# Testing and Linting
-npm test                   # Run unit tests with Jest
-npm run lint              # Run ESLint
-npm run lint:fix          # Auto-fix ESLint issues
+```
+adobe-mcp-server/
+├── packages/
+│   ├── shared/              # Shared utilities, ExtendScript bridge, telemetry
+│   ├── indesign-server/     # InDesign tools (52+ production-ready)
+│   └── illustrator-server/  # Illustrator tools (44 implemented)
+├── workflows/               # Illustrator workflow tests
+├── tests/                   # Test suites
+└── CLAUDE.md               # Development instructions for Claude Code
 ```
 
-### Environment Configuration
+## 🛠️ Available Tools
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_APP_MODE` | `indesign` | `indesign` or `illustrator` |
-| `MCP_PORT` | `3000` | HTTP server port |
-| `MCP_HTTPS_PORT` | `3443` | HTTPS server port |
-| `ENABLE_HTTPS` | `true` | Enable native HTTPS server |
-| `ENABLE_NGROK` | `true` | Enable ngrok tunneling |
-| `NGROK_AUTH_TOKEN` | - | Optional: authenticated ngrok tunnels |
-| `CORS_ORIGIN` | `*` | CORS policy for web clients |
-| `CERT_PATH` | auto-generated | Path to SSL certificate file |
-| `KEY_PATH` | auto-generated | Path to SSL private key file |
+### InDesign (52+ tools across 10 categories)
+- **Text**: Add, update, remove, get document text
+- **Styles**: Paragraph/character styles, fonts, formatting
+- **Layout**: Text frames, positioning, threading
+- **Pages**: Management, dimensions, navigation
+- **Export**: PDF, PNG, IDML, package for print
+- **Transform**: Object manipulation, alignment
+- **Analysis**: Metrics, comparisons, decision tracking
 
-**⚠️ Important:** Make sure the target Adobe application is running with a document open before using the tools.
+### Illustrator (44 tools across 9 categories)
+- **Foundation**: Selection, shapes, artboards, layers
+- **Operations**: Transformations, exports, styles, patterns
+- **Data**: CSV import, data merge, variable text
+- **Generative**: Procedural patterns, variations
+- **Export**: Asset extraction, batch export
+- **Integration**: Third-party services, cloud storage
 
-## Troubleshooting
+## 🔧 Claude Desktop Integration
 
-### General Issues
-- **`EADDRINUSE` Error**: The port is already in use. Stop the existing process or use a different port:
-  ```bash
-  MCP_PORT=3001 npm start
-  ```
-- **Permissions Error on macOS**: Ensure you have granted Terminal/your editor Automation permissions for InDesign/Illustrator in `System Settings → Privacy & Security → Automation`.
+Add to your `claude_desktop_config.json`:
 
-### ExtendScript Issues
-- **`JSON is undefined`**: ExtendScript lacks native JSON support. Use the `JSON2_POLYFILL` or build strings manually. See `CLAUDE.md` for details.
-- **Silent Failures**: If a tool call does nothing, check the InDesign/Illustrator JavaScript console for errors (`Window → Utilities → JavaScript Console`).
-- **Incorrect Object Selection**: Add debug logging to your ExtendScript to verify that your selection logic is targeting the correct objects.
+```json
+{
+  "mcpServers": {
+    "indesign-mcp": {
+      "command": "node",
+      "args": ["/path/to/adobe-mcp-server/packages/indesign-server/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    "illustrator-mcp": {
+      "command": "node",
+      "args": ["/path/to/adobe-mcp-server/packages/illustrator-server/dist/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
+```
 
-### HTTPS Certificate Issues
-- **Browser Warnings**: If you get security warnings for `https://localhost:3443`, you can either accept the self-signed certificate or install `mkcert` for a trusted local CA.
-- **Certificate Regeneration**: To force regenerate certificates, delete the `~/.indesign-mcp/certs/` directory and restart the server.
+## 🧪 Testing
 
-For more detailed debugging steps, see the `TESTING-GUIDE.md`.
+```bash
+# Run all tests
+pnpm test
 
-## License
+# Run linting
+pnpm run lint
+
+# Test Illustrator workflows (mock mode)
+npx tsx workflows/runWorkflowTests.ts --all
+
+# Type checking
+pnpm run typecheck
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**"No document open" error**
+- Ensure Adobe application is running with a document open before using tools
+
+**Permission denied on macOS**
+- Grant Terminal/IDE automation permissions in System Settings → Privacy & Security → Automation
+
+**Port already in use**
+- Change port: `MCP_PORT=3001 npm start`
+
+**ExtendScript errors**
+- Check Adobe's JavaScript Console: Window → Utilities → JavaScript Console
+- ExtendScript lacks native JSON - use provided polyfills
+
+### Debug Mode
+
+Add debug logging to ExtendScript:
+```javascript
+var debugSteps = [];
+try {
+  debugSteps.push("Started operation");
+  var doc = app.activeDocument;
+  debugSteps.push("Got document: " + doc.name);
+  // ... your code ...
+} catch (e) {
+  return "Debug: " + debugSteps.join(" | ") + " | Error: " + e.message;
+}
+```
+
+## 📊 Performance Targets
+
+- **Simple operations**: < 1 second
+- **Complex operations**: < 3 seconds
+- **Batch operations**: < 10 seconds
+- **Build time**: ~3.5 seconds
+- **Test execution**: < 1 second per test
+
+## 🔐 Security & Best Practices
+
+- Never commit API keys or credentials
+- ExtendScript runs with full application permissions
+- Validate all user inputs before ExtendScript execution
+- Use the telemetry system to track tool usage
+- Follow the patterns in CLAUDE.md for development
+
+## 📚 Documentation
+
+- **[PROJECT-STATUS.md](./PROJECT-STATUS.md)** - Current status and roadmap
+- **[CLAUDE.md](./CLAUDE.md)** - Development guide for AI assistants
+- **Archives**:
+  - Testing guides and handoff instructions available in ARCHIVE-* files
+  - Historical progress and requirements documentation
+
+## 🤝 Contributing
+
+This project uses a monorepo structure with pnpm workspaces. When contributing:
+
+1. Follow existing ExtendScript patterns
+2. Add tests for new tools
+3. Update tool descriptions for LLM clarity
+4. Test with real Adobe applications
+5. Document any API quirks
+
+## 📄 License
 
 MIT
+
+---
+
+**Note**: This project requires Adobe Creative Suite applications and macOS. It's designed for professional automation workflows and AI-assisted design tasks.
