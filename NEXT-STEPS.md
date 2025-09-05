@@ -5,6 +5,9 @@
 ✅ **HTTP/HTTPS servers updated** - Support app mode switching via `MCP_APP_MODE` environment variable.
 ✅ **Tests configured** - All packages have Jest configured and tests pass (with no test files yet).
 
+## 📋 Handoff Ready
+**See [HANDOFF-INSTRUCTIONS.md](./HANDOFF-INSTRUCTIONS.md) for detailed LLM agent instructions to continue development and testing.**
+
 ## Immediate Priorities
 
 ### 1. Production Testing & Validation
