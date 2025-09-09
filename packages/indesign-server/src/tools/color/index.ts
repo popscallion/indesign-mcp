@@ -14,14 +14,11 @@ export async function registerColorTools(server: McpServer): Promise<void> {
     "manage_color_swatches",
     {
       action: z.enum(["create", "update", "delete", "list"]).describe("Action to perform on swatches"),
-      swatches: z.array(z.object({
-        name: z.string().describe("Swatch name"),
-        color_model: z.enum(["RGB", "CMYK", "LAB"]).describe("Color model"),
-        values: z.array(z.number()).describe("Color values [R,G,B] or [C,M,Y,K] or [L,A,B]")
-      })).optional().describe("Array of swatches for create/update actions")
+      swatches_json: z.string().optional().describe("JSON array of swatches for create/update actions. Each swatch: {name, color_model, values}")
     },
-    async ({ action, swatches }) => {
-      const swatchesJson = swatches ? JSON.stringify(swatches) : "[]";
+    async ({ action, swatches_json }) => {
+      const swatches = swatches_json ? JSON.parse(swatches_json) : [];
+      const swatchesJson = JSON.stringify(swatches);
 
       const script = `
         ${JSON2_POLYFILL}
@@ -294,16 +291,10 @@ export async function registerColorTools(server: McpServer): Promise<void> {
   server.tool(
     "bulk_apply_colors",
     {
-      targets: z.array(z.object({
-        object_type: z.enum(["text_frame", "rectangle", "all"]).describe("Type of objects to target"),
-        pages: z.union([z.literal("all"), z.array(z.number())]).describe("Pages to apply colors on"),
-        filter_by: z.enum(["style_name", "layer_name", "content"]).optional().describe("Filter criteria"),
-        filter_value: z.string().optional().describe("Value to match for filter"),
-        color_property: z.enum(["fill", "stroke"]).describe("Which color property to change"),
-        swatch_name: z.string().describe("Name of swatch to apply")
-      })).describe("Array of color application targets")
+      targets_json: z.string().describe("JSON array of color application targets. Each target should have: object_type, pages, color_property, swatch_name, and optionally filter_by, filter_value")
     },
-    async ({ targets }) => {
+    async ({ targets_json }) => {
+      const targets = JSON.parse(targets_json);
       const targetsJson = JSON.stringify(targets);
 
       const script = `
@@ -853,7 +844,7 @@ export async function registerColorTools(server: McpServer): Promise<void> {
         })).optional()
       }).describe("Theme data object (swatches and object styles)"),
       auto_apply: z.boolean().default(true).describe("Automatically apply theme to document"),
-      pages: z.union([z.literal("all"), z.array(z.number())]).default("all").describe("Pages to apply theme to")
+      pages: z.string().default("all").describe("Pages to apply theme to: 'all' or comma-separated like '1,3,5'")
     },
     async ({ theme_name, theme_data, auto_apply, pages }) => {
       const themeName = escapeExtendScriptString(theme_name);

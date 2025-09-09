@@ -694,22 +694,16 @@ export async function registerUtilityTools(server: McpServer): Promise<void> {
     "copy_object_across_pages",
     {
       source_page: z.number().describe("Source page number (1-based)"),
-      target_pages: z.array(z.number()).describe("Target page numbers (1-based)"),
-      selection_criteria: z.object({
-        object_type: z.enum(["all", "text_frames", "images", "rectangles", "selected"]).default("selected").describe("Type of objects to copy"),
-        layer_name: z.string().optional().describe("Layer name to filter objects"),
-        position_filter: z.object({
-          x_range: z.object({ min: z.number(), max: z.number() }).optional().describe("X position range"),
-          y_range: z.object({ min: z.number(), max: z.number() }).optional().describe("Y position range")
-        }).optional().describe("Position-based filtering")
-      }).describe("Criteria for selecting objects to copy"),
-      positioning: z.object({
-        maintain_position: z.boolean().default(true).describe("Keep objects at same position"),
-        offset: z.object({
-          x: z.number().default(0),
-          y: z.number().default(0)
-        }).optional().describe("Offset to apply to copied objects")
-      }).default({ maintain_position: true }).describe("How to position copied objects")
+      target_pages: z.string().describe("Target page numbers: comma-separated list like '2,3,5'"),
+      object_type: z.enum(["all", "text_frames", "images", "rectangles", "selected"]).default("selected").describe("Type of objects to copy"),
+      layer_name: z.string().optional().describe("Layer name to filter objects (optional)"),
+      x_min: z.number().optional().describe("Minimum X position filter (optional)"),
+      x_max: z.number().optional().describe("Maximum X position filter (optional)"),
+      y_min: z.number().optional().describe("Minimum Y position filter (optional)"),
+      y_max: z.number().optional().describe("Maximum Y position filter (optional)"),
+      maintain_position: z.boolean().default(true).describe("Keep objects at same position"),
+      offset_x: z.number().default(0).describe("X offset to apply to copied objects"),
+      offset_y: z.number().default(0).describe("Y offset to apply to copied objects")
     },
     async (args) => {
       return await handleCopyObjectAcrossPages(args);

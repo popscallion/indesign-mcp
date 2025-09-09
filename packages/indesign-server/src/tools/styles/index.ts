@@ -144,20 +144,16 @@ export async function registerStyleTools(server: McpServer): Promise<void> {
     "apply_object_style",
     {
       style_name: z.string().describe("Name of the object style to apply"),
-      page_range: z.union([z.literal("all"), z.array(z.number())]).default("all").describe("Pages to apply on (1-based page numbers or 'all')"),
+      page_range: z.string().default("all").describe("Pages to apply on: 'all' or comma-separated page numbers like '1,3,5'"),
       target_selection: z.enum(["all_objects", "selected", "by_criteria"]).default("selected").describe("Target objects to apply style to"),
-      selection_criteria: z.object({
-        object_type: z.union([z.array(z.string()), z.literal("all")]).default("all").describe("Object types: ['rectangle', 'textFrame', 'image'] or 'all'"),
-        layer_names: z.array(z.string()).optional().describe("Layer names to include (optional)"),
-        position_bounds: z.object({
-          x_min: z.number(),
-          x_max: z.number(), 
-          y_min: z.number(),
-          y_max: z.number()
-        }).optional().describe("Position bounds filter (optional)"),
-        has_fill: z.boolean().optional().describe("Filter by fill property (optional)"),
-        has_stroke: z.boolean().optional().describe("Filter by stroke property (optional)")
-      }).optional().describe("Advanced selection criteria when target_selection is 'by_criteria'"),
+      selection_object_type: z.string().default("all").describe("Object types when target_selection is 'by_criteria': 'all' or comma-separated like 'rectangle,textFrame,image'"),
+      selection_layer_names: z.string().optional().describe("Layer names when target_selection is 'by_criteria': comma-separated layer names"),
+      selection_x_min: z.number().optional().describe("Minimum X position filter when target_selection is 'by_criteria'"),
+      selection_x_max: z.number().optional().describe("Maximum X position filter when target_selection is 'by_criteria'"),
+      selection_y_min: z.number().optional().describe("Minimum Y position filter when target_selection is 'by_criteria'"),
+      selection_y_max: z.number().optional().describe("Maximum Y position filter when target_selection is 'by_criteria'"),
+      selection_has_fill: z.boolean().optional().describe("Filter by fill property when target_selection is 'by_criteria'"),
+      selection_has_stroke: z.boolean().optional().describe("Filter by stroke property when target_selection is 'by_criteria'"),
       verbose_logging: z.boolean().default(false).describe("Enable detailed logging of operations"),
       dry_run: z.boolean().default(false).describe("Preview what would be selected/changed without applying")
     },

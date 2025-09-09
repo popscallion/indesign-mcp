@@ -1063,7 +1063,7 @@ export async function registerCompositeTools(server: McpServer): Promise<void> {
     {
       pattern: z.string().describe("Pattern to match frames by (searches in frame names, layer names, or content)"),
       file_path: z.string().describe("Path to the file to place in matching frames"),
-      apply_across_pages: z.union([z.literal("all"), z.array(z.number())]).default("all").describe("Pages to search: 'all' or array of page numbers"),
+      apply_across_pages: z.string().default("all").describe("Pages to search: 'all' or comma-separated page numbers like '1,3,5'"),
       search_criteria: z.enum(["name", "layer", "content"]).default("content").describe("What to match pattern against")
     },
     withChangeTracking(server, "link_content_to_frame_pattern")(async ({ pattern, file_path, apply_across_pages, search_criteria }: any, progressLogger: any): Promise<{ content: TextContent[] }> => {
